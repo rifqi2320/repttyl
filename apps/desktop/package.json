@@ -7,8 +7,8 @@
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",
-    "package": "rm -rf out && pnpm --filter @repttyl/client-node build && electron-forge package",
-    "make": "rm -rf out && pnpm --filter @repttyl/client-node build && electron-forge make"
+    "package": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\" && pnpm --filter @repttyl/client-node build && electron-forge package",
+    "make": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\" && pnpm --filter @repttyl/client-node build && electron-forge make"
   },
   "dependencies": {
     "@repttyl/client-node": "workspace:*",

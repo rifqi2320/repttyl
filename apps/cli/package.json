@@ -8,7 +8,7 @@
     "repttyl-client": "./dist/main.js"
   },
   "scripts": {
-    "build": "rm -rf dist && pnpm --filter @repttyl/client-node build && tsc -p tsconfig.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && pnpm --filter @repttyl/client-node build && tsc -p tsconfig.json",
     "start": "node dist/main.js"
   },
   "dependencies": {

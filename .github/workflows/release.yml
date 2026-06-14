@@ -4,9 +4,19 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create or update, for example v0.1.1"
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  NODE_VERSION: 24
 
 jobs:
   agent:
@@ -49,7 +59,7 @@ jobs:
           if [ "$GOOS" = "windows" ]; then
             ext=".exe"
           fi
-          name="repttyl-${GITHUB_REF_NAME}-${GOOS}-${GOARCH}"
+          name="repttyl-${RELEASE_TAG}-${GOOS}-${GOARCH}"
           go build -trimpath -ldflags="-s -w" -o "dist/repttyl${ext}" ./cmd/repttyl
           tar -C dist -czf "${name}.tar.gz" "repttyl${ext}"
           sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256"
@@ -73,7 +83,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Enable Corepack
         run: corepack enable
@@ -87,13 +97,16 @@ jobs:
       - name: Package CLI
         run: |
           set -euo pipefail
-          name="repttyl-client-${GITHUB_REF_NAME}"
+          name="repttyl-client-${RELEASE_TAG}"
           package_root="dist-release/${name}"
           mkdir -p "${package_root}/dist"
+          mkdir -p "${package_root}/node_modules/@repttyl/client-node/dist"
           mkdir -p "${package_root}/node_modules/@repttyl/protocol-client/dist"
 
           cp -R apps/cli/dist/. "${package_root}/dist/"
           cp apps/cli/package.json "${package_root}/package.json"
+          cp packages/client-node/package.json "${package_root}/node_modules/@repttyl/client-node/package.json"
+          cp -R packages/client-node/dist/. "${package_root}/node_modules/@repttyl/client-node/dist/"
           cp packages/protocol-client/package.json "${package_root}/node_modules/@repttyl/protocol-client/package.json"
           cp -R packages/protocol-client/dist/. "${package_root}/node_modules/@repttyl/protocol-client/dist/"
           chmod +x "${package_root}/dist/main.js"
@@ -110,12 +123,96 @@ jobs:
             repttyl-client-*.tar.gz.sha256
           if-no-files-found: error
 
+  desktop:
+    name: Desktop ${{ matrix.platform }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            package-dir: Repttyl-linux-x64
+            archive: tar.gz
+          - os: macos-15-intel
+            platform: darwin
+            arch: x64
+            package-dir: Repttyl-darwin-x64
+            archive: zip
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            package-dir: Repttyl-darwin-arm64
+            archive: zip
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            package-dir: Repttyl-win32-x64
+            archive: zip
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package desktop
+        run: pnpm --filter @repttyl/desktop exec electron-forge package --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+
+      - name: Archive desktop on Linux
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist-release
+          name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.tar.gz"
+          tar -C apps/desktop/out -czf "dist-release/${name}" "${{ matrix.package-dir }}"
+          (cd dist-release && sha256sum "${name}" > "${name}.sha256")
+
+      - name: Archive desktop on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist-release
+          name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.zip"
+          ditto -c -k --sequesterRsrc --keepParent "apps/desktop/out/${{ matrix.package-dir }}" "dist-release/${name}"
+          (cd dist-release && shasum -a 256 "${name}" > "${name}.sha256")
+
+      - name: Archive desktop on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-release | Out-Null
+          $name = "repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${env:RELEASE_TAG}.zip"
+          Compress-Archive -Path "apps/desktop/out/${{ matrix.package-dir }}" -DestinationPath "dist-release/$name" -Force
+          $hash = (Get-FileHash "dist-release/$name" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name" | Out-File -FilePath "dist-release/$name.sha256" -Encoding ascii
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            dist-release/repttyl-desktop-*
+          if-no-files-found: error
+
   github-release:
     name: GitHub Release
     runs-on: ubuntu-latest
     needs:
       - agent
       - cli
+      - desktop
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -130,9 +227,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          find artifacts -type f -print
-          gh release create "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            $(find artifacts -type f -print)
+          mapfile -t assets < <(find artifacts -type f -print | sort)
+          printf '%s\n' "${assets[@]}"
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber \
+              "${assets[@]}"
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$RELEASE_TAG" \
+              --generate-notes \
+              "${assets[@]}"
+          fi
