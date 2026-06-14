@@ -120,7 +120,7 @@ cp "${archive}" "$dest"
     "hello",
   );
 
-  assert.equal(JSON.parse(result.stdout).agent_version, "0.1.2-rc.3");
+  assert.equal(JSON.parse(result.stdout).agent_version, "0.1.2-rc.4");
   assert.equal(existsSync(path.join(installDir, "repttyl")), true);
 });
 

@@ -7,6 +7,7 @@ type SSHHost = Awaited<ReturnType<typeof window.repttyl.listHosts>>[number];
 type ConnectionState = Awaited<ReturnType<typeof window.repttyl.getConnectionState>>;
 type AppSettings = Awaited<ReturnType<typeof window.repttyl.getSettings>>;
 type UpdateCheckResult = Awaited<ReturnType<typeof window.repttyl.checkForUpdates>>;
+type AutoUpdateState = Awaited<ReturnType<typeof window.repttyl.getAutoUpdateStatus>>;
 
 type AppState = {
   activeView: "workspace" | "settings";
@@ -14,6 +15,7 @@ type AppState = {
   connection: ConnectionState;
   settings?: AppSettings;
   updateCheck?: UpdateCheckResult;
+  autoUpdate?: AutoUpdateState;
   workspaces: Workspace[];
   sessions: Session[];
   selectedHost?: string;
@@ -22,6 +24,7 @@ type AppState = {
   stream?: string;
   busy: boolean;
   updateChecking: boolean;
+  autoUpdateChecking: boolean;
   message?: string;
 };
 
@@ -33,6 +36,7 @@ const state: AppState = {
   sessions: [],
   busy: false,
   updateChecking: false,
+  autoUpdateChecking: false,
 };
 let renderedSettingsKey = "";
 
@@ -138,7 +142,7 @@ app.innerHTML = `
             <label class="setting-row">
               <span>
                 <strong>Include release candidates</strong>
-                <small>Consider prereleases such as <code>v0.1.2-rc.3</code>.</small>
+                <small>Consider prereleases such as <code>v0.1.2-rc.4</code>.</small>
               </span>
               <input id="settingIncludePrereleases" type="checkbox" />
             </label>
@@ -238,6 +242,11 @@ window.repttyl.onConnectionState((nextState) => {
   render();
 });
 
+window.repttyl.onAutoUpdateStatus((nextState) => {
+  state.autoUpdate = nextState;
+  render();
+});
+
 terminalRoot.addEventListener("click", () => terminal.focus());
 new ResizeObserver(() => resizeTerminal()).observe(terminalRoot);
 
@@ -263,7 +272,7 @@ function bindUI(): void {
 }
 
 async function boot(): Promise<void> {
-  await Promise.all([loadSettings(), loadHosts(), loadConnectionState()]);
+  await Promise.all([loadSettings(), loadHosts(), loadConnectionState(), loadAutoUpdateStatus()]);
   if (state.connection.connected) {
     await loadWorkspaces();
   }
@@ -279,6 +288,10 @@ async function loadSettings(): Promise<void> {
 
 async function loadConnectionState(): Promise<void> {
   state.connection = await window.repttyl.getConnectionState();
+}
+
+async function loadAutoUpdateStatus(): Promise<void> {
+  state.autoUpdate = await window.repttyl.getAutoUpdateStatus();
 }
 
 async function loadHosts(): Promise<void> {
@@ -527,7 +540,13 @@ function renderSettings(): void {
   byID("settingsSaveStatus").textContent = state.message ?? "";
 
   const status = byID("updateStatus");
-  if (state.updateChecking) {
+  if (state.autoUpdate?.status === "downloaded") {
+    status.textContent = "Desktop update downloaded. Restart to install.";
+  } else if (state.autoUpdate?.status === "checking" || state.autoUpdate?.status === "available" || state.autoUpdateChecking) {
+    status.textContent = state.autoUpdate?.message ?? "Checking desktop updater...";
+  } else if (state.autoUpdate?.status === "error") {
+    status.textContent = state.autoUpdate.error ?? state.autoUpdate.message;
+  } else if (state.updateChecking) {
     status.textContent = "Checking GitHub releases...";
   } else if (state.updateCheck?.error) {
     status.textContent = state.updateCheck.error;
@@ -535,6 +554,8 @@ function renderSettings(): void {
     status.textContent = state.updateCheck.updateAvailable
       ? `${state.updateCheck.latest.version} is available.`
       : `Up to date at ${state.updateCheck.currentVersion}.`;
+  } else if (state.autoUpdate && !state.autoUpdate.supported) {
+    status.textContent = state.autoUpdate.message;
   } else {
     status.textContent = "No check has run yet.";
   }
@@ -543,6 +564,21 @@ function renderSettings(): void {
 function renderUpdateBanner(): void {
   const banner = byID("updateBanner");
   const result = state.updateCheck;
+  const autoUpdate = state.autoUpdate;
+
+  if (autoUpdate?.status === "downloaded") {
+    banner.hidden = false;
+    banner.innerHTML = `
+      <div>
+        <strong>Desktop update ready</strong>
+        <span>${escapeHTML(autoUpdate.releaseName || autoUpdate.message)}</span>
+      </div>
+      <button id="installAutoUpdate" class="secondary" title="Restart and install update">Restart to update</button>
+    `;
+    byID("installAutoUpdate").addEventListener("click", () => void installAutoUpdate());
+    return;
+  }
+
   if (!result?.updateAvailable || !result.latest) {
     banner.hidden = true;
     banner.innerHTML = "";
@@ -553,15 +589,44 @@ function renderUpdateBanner(): void {
   banner.innerHTML = `
     <div>
       <strong>${escapeHTML(result.latest.version)} available${result.latest.prerelease ? " (RC)" : ""}</strong>
-      <span>${escapeHTML(result.latest.name || result.latest.version)}</span>
+      <span>${escapeHTML(updateBannerDetail(result, autoUpdate))}</span>
     </div>
-    <button id="openRelease" class="secondary" title="Open release">Open release</button>
+    ${updateBannerAction(autoUpdate)}
   `;
-  byID("openRelease").addEventListener("click", () => {
+  const autoButton = document.getElementById("checkAutoUpdate");
+  if (autoButton) {
+    autoButton.addEventListener("click", () => void runAutoUpdateCheck());
+  }
+  const releaseButton = document.getElementById("openRelease");
+  releaseButton?.addEventListener("click", () => {
     if (result.latest?.url) {
       void window.repttyl.openExternal(result.latest.url);
     }
   });
+}
+
+function updateBannerDetail(result: UpdateCheckResult, autoUpdate?: AutoUpdateState): string {
+  if (autoUpdate?.supported) {
+    if (autoUpdate.status === "checking") {
+      return "Checking Electron auto-update feed...";
+    }
+    if (autoUpdate.status === "available") {
+      return "Downloading automatically...";
+    }
+    if (autoUpdate.status === "error") {
+      return autoUpdate.error ?? autoUpdate.message;
+    }
+    return "Desktop auto-update is available for packaged macOS and Windows builds.";
+  }
+  return `${result.latest?.name || result.latest?.version} is available on GitHub.`;
+}
+
+function updateBannerAction(autoUpdate?: AutoUpdateState): string {
+  if (autoUpdate?.supported) {
+    const disabled = autoUpdate.status === "checking" || autoUpdate.status === "available" ? " disabled" : "";
+    return `<button id="checkAutoUpdate" class="secondary" title="Check and download update"${disabled}>Check updater</button>`;
+  }
+  return `<button id="openRelease" class="secondary" title="Open release">Open release</button>`;
 }
 
 async function saveSettings(): Promise<void> {
@@ -575,14 +640,35 @@ async function runUpdateCheck(): Promise<void> {
   if (state.settings) {
     state.settings = await window.repttyl.updateSettings(readSettingsForm());
   }
+  await loadAutoUpdateStatus();
   state.updateChecking = true;
   render();
   try {
     state.updateCheck = await window.repttyl.checkForUpdates();
+    if (state.updateCheck.updateAvailable && state.autoUpdate?.supported) {
+      state.autoUpdate = await window.repttyl.checkAutoUpdate();
+    }
   } finally {
     state.updateChecking = false;
     render();
   }
+}
+
+async function runAutoUpdateCheck(): Promise<void> {
+  state.autoUpdateChecking = true;
+  render();
+  try {
+    state.autoUpdate = await window.repttyl.checkAutoUpdate();
+  } finally {
+    state.autoUpdateChecking = false;
+    render();
+  }
+}
+
+async function installAutoUpdate(): Promise<void> {
+  await withBusy(async () => {
+    await window.repttyl.installAutoUpdate();
+  });
 }
 
 function readSettingsForm(): Partial<AppSettings> {
@@ -595,7 +681,7 @@ function readSettingsForm(): Partial<AppSettings> {
     remoteAgent: {
       autoInstall: checkboxValue("settingRemoteAutoInstall"),
       repository: inputValue("settingRemoteRepository") || "rifqi2320/repttyl",
-      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.3",
+      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.4",
     },
   };
 }

@@ -36,17 +36,17 @@ https://github.com/rifqi2320/repttyl/releases
 Agent archives are named by platform:
 
 ```text
-repttyl-v0.1.2-rc.3-linux-amd64.tar.gz
-repttyl-v0.1.2-rc.3-linux-arm64.tar.gz
-repttyl-v0.1.2-rc.3-darwin-amd64.tar.gz
-repttyl-v0.1.2-rc.3-darwin-arm64.tar.gz
-repttyl-v0.1.2-rc.3-windows-amd64.tar.gz
+repttyl-v0.1.2-rc.4-linux-amd64.tar.gz
+repttyl-v0.1.2-rc.4-linux-arm64.tar.gz
+repttyl-v0.1.2-rc.4-darwin-amd64.tar.gz
+repttyl-v0.1.2-rc.4-darwin-arm64.tar.gz
+repttyl-v0.1.2-rc.4-windows-amd64.tar.gz
 ```
 
 The CLI archive is platform-independent and requires Node.js:
 
 ```text
-repttyl-client-v0.1.2-rc.3.tar.gz
+repttyl-client-v0.1.2-rc.4.tar.gz
 ```
 
 ## Build From Source
@@ -144,6 +144,10 @@ Development macOS DMGs are unsigned unless Apple signing secrets are configured 
 xattr -dr com.apple.quarantine /Applications/Repttyl.app
 open /Applications/Repttyl.app
 ```
+
+## Desktop Auto-Update
+
+Packaged macOS and Windows builds use Electron autoUpdater with `update.electronjs.org`. The app checks the GitHub release feed, downloads supported updates automatically, and prompts for restart after the update is ready. Linux desktop builds do not use Electron autoUpdater; update those through the release artifacts or a package manager.
 
 For a running Docker container with `repttyl` and `tmux` installed:
 

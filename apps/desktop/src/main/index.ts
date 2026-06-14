@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, autoUpdater, BrowserWindow, ipcMain, shell } from "electron";
 import started from "electron-squirrel-startup";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -56,6 +56,15 @@ type UpdateCheckResult = {
   error?: string;
 };
 
+type AutoUpdateState = {
+  supported: boolean;
+  status: "unsupported" | "idle" | "checking" | "available" | "not-available" | "downloaded" | "error";
+  message: string;
+  feedURL?: string;
+  releaseName?: string;
+  error?: string;
+};
+
 type GitHubRelease = {
   tag_name?: string;
   name?: string | null;
@@ -81,7 +90,7 @@ const defaultSettings: AppSettings = {
   remoteAgent: {
     autoInstall: true,
     repository: "rifqi2320/repttyl",
-    version: "v0.1.2-rc.3",
+    version: "v0.1.2-rc.4",
   },
 };
 
@@ -90,9 +99,19 @@ let client: AgentClient | undefined;
 let state: ConnectionState = { connected: false };
 let outputUnsubscribe: (() => void) | undefined;
 let errorUnsubscribe: (() => void) | undefined;
+let autoUpdateState: AutoUpdateState = {
+  supported: false,
+  status: "unsupported",
+  message: "Auto-update is only available in packaged macOS and Windows builds.",
+};
+let autoUpdateEventsBound = false;
 
 if (started) {
   app.quit();
+}
+
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.squirrel.Repttyl.repttyl-desktop");
 }
 
 if (process.env.REPTTYL_DISABLE_GPU === "1") {
@@ -188,7 +207,19 @@ const createWindow = () => {
 
 void app.whenReady().then(() => {
   registerIPC();
+  configureAutoUpdater(readSettings());
   createWindow();
+  const settings = readSettings();
+  if (settings.updates.checkOnStartup) {
+    const delay = process.platform === "win32" && process.argv.includes("--squirrel-firstrun") ? 10_000 : 2_000;
+    setTimeout(() => {
+      void checkForUpdates(settings).then((result) => {
+        if (result.updateAvailable) {
+          checkElectronAutoUpdate();
+        }
+      });
+    }, delay);
+  }
 });
 
 app.on("window-all-closed", () => {
@@ -211,9 +242,18 @@ function registerIPC(): void {
   ipcMain.handle("repttyl:settings:update", async (_event, patch: Partial<AppSettings>): Promise<AppSettings> => {
     const nextSettings = mergeSettings(readSettings(), patch);
     writeSettings(nextSettings);
+    configureAutoUpdater(nextSettings);
     return nextSettings;
   });
   ipcMain.handle("repttyl:updates:check", async (): Promise<UpdateCheckResult> => checkForUpdates(readSettings()));
+  ipcMain.handle("repttyl:auto-update:status", async (): Promise<AutoUpdateState> => autoUpdateState);
+  ipcMain.handle("repttyl:auto-update:check", async (): Promise<AutoUpdateState> => checkElectronAutoUpdate());
+  ipcMain.handle("repttyl:auto-update:install", async (): Promise<void> => {
+    if (autoUpdateState.status !== "downloaded") {
+      throw new Error("No downloaded update is ready to install.");
+    }
+    autoUpdater.quitAndInstall();
+  });
   ipcMain.handle("repttyl:external:open", async (_event, url: string): Promise<void> => {
     if (!url.startsWith("https://github.com/")) {
       throw new Error("Only GitHub release links can be opened from Repttyl.");
@@ -230,7 +270,7 @@ function registerIPC(): void {
     bindTerminalEvents(nextClient);
 
     try {
-      const hello = await nextClient.hello("0.1.2-rc.3");
+      const hello = await nextClient.hello("0.1.2-rc.4");
       state = {
         connected: true,
         mode: request.mode,
@@ -328,6 +368,111 @@ function sendToMainWindow(channel: string, ...args: unknown[]): void {
   }
 
   window.webContents.send(channel, ...args);
+}
+
+function configureAutoUpdater(settings: AppSettings): void {
+  bindAutoUpdaterEvents();
+
+  if (process.platform !== "darwin" && process.platform !== "win32") {
+    setAutoUpdateState({
+      supported: false,
+      status: "unsupported",
+      message: "Electron autoUpdater is not available on Linux. Use your package manager or the GitHub release.",
+    });
+    return;
+  }
+
+  if (!app.isPackaged && process.env.REPTTYL_FORCE_AUTO_UPDATE !== "1") {
+    setAutoUpdateState({
+      supported: false,
+      status: "unsupported",
+      message: "Auto-update runs only in packaged desktop builds.",
+    });
+    return;
+  }
+
+  const feedURL = `https://update.electronjs.org/${settings.updates.repository}/${process.platform}-${process.arch}/${app.getVersion()}`;
+  autoUpdater.setFeedURL({ url: feedURL });
+  setAutoUpdateState({
+    supported: true,
+    status: "idle",
+    message: "Auto-update is ready.",
+    feedURL,
+  });
+}
+
+function bindAutoUpdaterEvents(): void {
+  if (autoUpdateEventsBound) {
+    return;
+  }
+  autoUpdateEventsBound = true;
+
+  autoUpdater.on("checking-for-update", () => {
+    setAutoUpdateState({
+      ...autoUpdateState,
+      status: "checking",
+      message: "Checking for desktop update...",
+      error: undefined,
+    });
+  });
+  autoUpdater.on("update-available", () => {
+    setAutoUpdateState({
+      ...autoUpdateState,
+      status: "available",
+      message: "Desktop update found. Downloading automatically...",
+      error: undefined,
+    });
+  });
+  autoUpdater.on("update-not-available", () => {
+    setAutoUpdateState({
+      ...autoUpdateState,
+      status: "not-available",
+      message: "Desktop app is up to date.",
+      error: undefined,
+    });
+  });
+  autoUpdater.on("update-downloaded", (_event, _releaseNotes, releaseName) => {
+    setAutoUpdateState({
+      ...autoUpdateState,
+      status: "downloaded",
+      message: "Desktop update downloaded. Restart to install.",
+      releaseName,
+      error: undefined,
+    });
+  });
+  autoUpdater.on("error", (error) => {
+    setAutoUpdateState({
+      ...autoUpdateState,
+      status: "error",
+      message: "Desktop auto-update failed.",
+      error: error.message,
+    });
+  });
+}
+
+function checkElectronAutoUpdate(): AutoUpdateState {
+  if (!autoUpdateState.supported) {
+    return autoUpdateState;
+  }
+  if (autoUpdateState.status === "checking" || autoUpdateState.status === "available") {
+    return autoUpdateState;
+  }
+  try {
+    autoUpdater.checkForUpdates();
+  } catch (error) {
+    setAutoUpdateState({
+      ...autoUpdateState,
+      status: "error",
+      message: "Desktop auto-update failed.",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return autoUpdateState;
+}
+
+function setAutoUpdateState(nextState: AutoUpdateState): void {
+  autoUpdateState = nextState;
+  sendToMainWindow("repttyl:auto-update:status", autoUpdateState);
 }
 
 function readSettings(): AppSettings {

@@ -44,6 +44,15 @@ type UpdateCheckResult = {
   error?: string;
 };
 
+type AutoUpdateState = {
+  supported: boolean;
+  status: "unsupported" | "idle" | "checking" | "available" | "not-available" | "downloaded" | "error";
+  message: string;
+  feedURL?: string;
+  releaseName?: string;
+  error?: string;
+};
+
 type TerminalAttachRequest = {
   workspaceID: string;
   session: string;
@@ -56,6 +65,9 @@ const api = {
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke("repttyl:settings:get"),
   updateSettings: (patch: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke("repttyl:settings:update", patch),
   checkForUpdates: (): Promise<UpdateCheckResult> => ipcRenderer.invoke("repttyl:updates:check"),
+  getAutoUpdateStatus: (): Promise<AutoUpdateState> => ipcRenderer.invoke("repttyl:auto-update:status"),
+  checkAutoUpdate: (): Promise<AutoUpdateState> => ipcRenderer.invoke("repttyl:auto-update:check"),
+  installAutoUpdate: (): Promise<void> => ipcRenderer.invoke("repttyl:auto-update:install"),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("repttyl:external:open", url),
   getConnectionState: (): Promise<ConnectionState> => ipcRenderer.invoke("repttyl:connection:state"),
   connect: (request: ConnectRequest): Promise<ConnectionState> => ipcRenderer.invoke("repttyl:connection:connect", request),
@@ -81,6 +93,11 @@ const api = {
     const wrapped = (_event: Electron.IpcRendererEvent, state: ConnectionState) => listener(state);
     ipcRenderer.on("repttyl:connection:state", wrapped);
     return () => ipcRenderer.off("repttyl:connection:state", wrapped);
+  },
+  onAutoUpdateStatus: (listener: (state: AutoUpdateState) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, state: AutoUpdateState) => listener(state);
+    ipcRenderer.on("repttyl:auto-update:status", wrapped);
+    return () => ipcRenderer.off("repttyl:auto-update:status", wrapped);
   },
 };
 
