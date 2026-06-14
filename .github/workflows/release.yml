@@ -180,10 +180,15 @@ jobs:
           set -euo pipefail
           mkdir -p dist-release
           name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.tar.gz"
-          package_dir=$(find . -type d -name "${{ matrix.package-dir }}" -print -quit)
+          package_dir=""
+          for _ in $(seq 1 60); do
+            package_dir=$(find . -path './node_modules' -prune -o -type d \( -name "${{ matrix.package-dir }}" -o -name "*-${{ matrix.platform }}-${{ matrix.arch }}" \) -print -quit)
+            [ -n "${package_dir}" ] && break
+            sleep 2
+          done
           if [ -z "${package_dir}" ]; then
             echo "Could not find ${{ matrix.package-dir }}"
-            find . -maxdepth 5 -type d | sort
+            find . -path './node_modules' -prune -o -type d \( -name '*Repttyl*' -o -name '*desktop*' -o -name '*out*' -o -name '*${{ matrix.platform }}*' \) -print | sort
             exit 1
           fi
           tar -C "$(dirname "${package_dir}")" -czf "dist-release/${name}" "$(basename "${package_dir}")"
@@ -196,10 +201,15 @@ jobs:
           set -euo pipefail
           mkdir -p dist-release
           name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.zip"
-          package_dir=$(find . -type d -name "${{ matrix.package-dir }}" -print -quit)
+          package_dir=""
+          for _ in $(seq 1 60); do
+            package_dir=$(find . -path './node_modules' -prune -o -type d \( -name "${{ matrix.package-dir }}" -o -name "*-${{ matrix.platform }}-${{ matrix.arch }}" \) -print -quit)
+            [ -n "${package_dir}" ] && break
+            sleep 2
+          done
           if [ -z "${package_dir}" ]; then
             echo "Could not find ${{ matrix.package-dir }}"
-            find . -maxdepth 5 -type d | sort
+            find . -path './node_modules' -prune -o -type d \( -name '*Repttyl*' -o -name '*desktop*' -o -name '*out*' -o -name '*${{ matrix.platform }}*' \) -print | sort
             exit 1
           fi
           ditto -c -k --sequesterRsrc --keepParent "${package_dir}" "dist-release/${name}"
@@ -211,7 +221,18 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist-release | Out-Null
           $name = "repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${env:RELEASE_TAG}.zip"
-          $packageDir = Get-ChildItem -Path . -Directory -Recurse -Filter "${{ matrix.package-dir }}" | Select-Object -First 1
+          $packageDir = $null
+          for ($i = 0; $i -lt 60 -and $null -eq $packageDir; $i++) {
+            $packageDir = Get-ChildItem -Path . -Directory -Recurse |
+              Where-Object {
+                $_.FullName -notmatch "\\node_modules\\" -and
+                ($_.Name -eq "${{ matrix.package-dir }}" -or $_.Name -like "*-${{ matrix.platform }}-${{ matrix.arch }}")
+              } |
+              Select-Object -First 1
+            if ($null -eq $packageDir) {
+              Start-Sleep -Seconds 2
+            }
+          }
           if ($null -eq $packageDir) {
             Write-Error "Could not find ${{ matrix.package-dir }}"
           }
