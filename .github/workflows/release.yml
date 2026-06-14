@@ -166,7 +166,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Package desktop
-        run: pnpm --filter @repttyl/desktop exec electron-forge package --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+        run: pnpm --filter @repttyl/desktop package -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
 
       - name: Archive desktop on Linux
         if: matrix.archive == 'tar.gz'
