@@ -2,8 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "../../dist/apps/desktop",
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@repttyl/client-node": ["packages/client-node/dist/index.d.ts"],
+      "@repttyl/protocol-client": ["packages/protocol-client/dist/index.d.ts"]
+    }
   },
   "include": ["src/**/*.ts", "forge.config.ts"]
 }
-

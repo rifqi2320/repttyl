@@ -13,11 +13,17 @@ export type Workspace = {
   last_used_at?: string;
 };
 
+export type Session = {
+  name: string;
+  status: WorkspaceStatus;
+};
+
 export type AgentRequest =
   | { id: RequestId; op: "hello"; client_version: string }
   | { id: RequestId; op: "workspace.list" }
   | { id: RequestId; op: "workspace.create"; name: string }
-  | { id: RequestId; op: "terminal.attach"; workspace_id: string; cols: number; rows: number }
+  | { id: RequestId; op: "session.list"; workspace_id: string }
+  | { id: RequestId; op: "terminal.attach"; workspace_id: string; session?: string; cols: number; rows: number }
   | { id: RequestId; op: "session.kill"; workspace_id: string; session: string }
   | { id: RequestId; op: "events.subscribe" };
 
@@ -85,6 +91,10 @@ export type WorkspaceListResult = {
 
 export type WorkspaceCreateResult = {
   workspace: Workspace;
+};
+
+export type SessionListResult = {
+  sessions: Session[];
 };
 
 export type TerminalAttachResult = {
@@ -155,11 +165,16 @@ export class AgentClient {
     return this.request<WorkspaceCreateResult>({ id: this.allocateID(), op: "workspace.create", name });
   }
 
-  attachTerminal(workspaceID: string, cols: number, rows: number): Promise<TerminalAttachResult> {
+  listSessions(workspaceID: string): Promise<SessionListResult> {
+    return this.request<SessionListResult>({ id: this.allocateID(), op: "session.list", workspace_id: workspaceID });
+  }
+
+  attachTerminal(workspaceID: string, cols: number, rows: number, session = "main"): Promise<TerminalAttachResult> {
     return this.request<TerminalAttachResult>({
       id: this.allocateID(),
       op: "terminal.attach",
       workspace_id: workspaceID,
+      session,
       cols,
       rows,
     });

@@ -1,6 +1,6 @@
 {
   "name": "repttyl",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "private": true,
   "packageManager": "pnpm@10.16.1",
@@ -9,7 +9,7 @@
     "lint": "nx run-many -t lint",
     "test": "nx run-many -t test",
     "typecheck": "tsc -p apps/desktop/tsconfig.json --noEmit",
-    "release:preflight": "pnpm typecheck && pnpm --filter @repttyl/cli build && cd agent && go test -count=1 ./... && go build -o bin/repttyl ./cmd/repttyl",
+    "release:preflight": "pnpm typecheck && pnpm --filter @repttyl/cli build && pnpm --filter @repttyl/desktop package && cd agent && go test -count=1 ./... && go build -o bin/repttyl ./cmd/repttyl",
     "agent:build": "nx build agent",
     "agent:test": "nx test agent",
     "cli:build": "nx build cli",

@@ -1,18 +1,15 @@
 {
-  "name": "@repttyl/cli",
+  "name": "@repttyl/client-node",
   "version": "0.1.1",
   "license": "MIT",
   "private": true,
   "type": "module",
-  "bin": {
-    "repttyl-client": "./dist/main.js"
-  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "rm -rf dist && pnpm --filter @repttyl/client-node build && tsc -p tsconfig.json",
-    "start": "node dist/main.js"
+    "build": "rm -rf dist && pnpm --filter @repttyl/protocol-client build && tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@repttyl/client-node": "workspace:*",
     "@repttyl/protocol-client": "workspace:*"
   },
   "devDependencies": {

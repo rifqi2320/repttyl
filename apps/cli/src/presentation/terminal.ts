@@ -10,11 +10,12 @@ type TerminalPresentationIO = {
 export async function attachTerminalPresentation(
   client: AgentClient,
   workspaceID: string,
+  session: string,
   io: TerminalPresentationIO,
 ): Promise<void> {
   const cols = terminalCols(io.output);
   const rows = terminalRows(io.output);
-  const { stream } = await client.attachTerminal(workspaceID, cols, rows);
+  const { stream } = await client.attachTerminal(workspaceID, cols, rows, session);
 
   const unsubscribeOutput = client.onTerminalOutput((message) => {
     if (message.stream === stream) {

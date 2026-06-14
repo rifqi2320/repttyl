@@ -1,15 +1,17 @@
 {
   "name": "@repttyl/desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "productName": "Repttyl",
   "license": "MIT",
   "private": true,
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make"
+    "package": "rm -rf out && pnpm --filter @repttyl/client-node build && electron-forge package",
+    "make": "rm -rf out && pnpm --filter @repttyl/client-node build && electron-forge make"
   },
   "dependencies": {
+    "@repttyl/client-node": "workspace:*",
     "@repttyl/protocol-client": "workspace:*",
     "@xterm/xterm": "^5.5.0",
     "electron-squirrel-startup": "^1.0.1"
@@ -21,7 +23,9 @@
     "@electron-forge/maker-squirrel": "^7.10.0",
     "@electron-forge/maker-zip": "^7.10.0",
     "@electron-forge/plugin-webpack": "^7.10.0",
+    "css-loader": "^7.1.0",
     "electron": "^39.0.0",
+    "style-loader": "^4.0.0",
     "ts-loader": "^9.5.0",
     "typescript": "^5.9.0"
   }

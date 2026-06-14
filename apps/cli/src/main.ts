@@ -1,14 +1,24 @@
 #!/usr/bin/env node
 
-import { AgentClient, AgentProtocolError } from "@repttyl/protocol-client";
+import { AgentClient, AgentProtocolError, type Session, type Workspace } from "@repttyl/protocol-client";
+import {
+  createAgentProcessConnection,
+  createSSHAgentConnection,
+  listSSHHosts,
+  resolveDefaultAgentBinary,
+  type SSHHost,
+} from "@repttyl/client-node";
 import { attachTerminalPresentation } from "./presentation/terminal.js";
+import { renderSessions } from "./presentation/sessions.js";
+import { promptText, selectOne } from "./presentation/select.js";
 import { renderWorkspaces } from "./presentation/text.js";
-import { createAgentProcessConnection, resolveDefaultAgentBinary } from "./transport/agent-process.js";
 
-const CLIENT_VERSION = "0.1.0";
+const CLIENT_VERSION = "0.1.1";
 
 type ParsedArgs = {
   agentBinary: string;
+  host?: string;
+  local: boolean;
   json: boolean;
   command: string[];
 };
@@ -16,16 +26,51 @@ type ParsedArgs = {
 async function main(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
 
-  if (args.command.length === 0 || args.command[0] === "help" || args.command[0] === "--help") {
+  if (args.command[0] === "help" || args.command[0] === "--help") {
     printUsage();
     return;
   }
 
-  const connection = createAgentProcessConnection(args.agentBinary);
-  const client = new AgentClient(connection);
+  if (args.command.length === 0 || args.command[0] === "tui") {
+    await runInteractive(args);
+    return;
+  }
 
+  const client = createClient(args);
   try {
     await runCommand(client, args);
+  } finally {
+    client.close();
+  }
+}
+
+async function runInteractive(args: ParsedArgs): Promise<void> {
+  const host = args.local ? undefined : args.host ?? (await chooseHost());
+  if (!args.local && !host) {
+    process.stdout.write("No host selected.\n");
+    return;
+  }
+
+  const client = createClient({ ...args, host });
+  try {
+    await client.hello(CLIENT_VERSION);
+
+    const workspace = await chooseWorkspace(client);
+    if (!workspace) {
+      return;
+    }
+
+    const session = await chooseSession(client, workspace);
+    if (!session) {
+      return;
+    }
+
+    process.stdout.write(`\nConnecting to ${workspace.name}/${session.name}${host ? ` on ${host}` : ""}...\n`);
+    await attachTerminalPresentation(client, workspace.id, session.name, {
+      input: process.stdin,
+      output: process.stdout,
+      error: process.stderr,
+    });
   } finally {
     client.close();
   }
@@ -35,8 +80,7 @@ async function runCommand(client: AgentClient, args: ParsedArgs): Promise<void> 
   const [resource, action, ...rest] = args.command;
 
   if (resource === "hello") {
-    const hello = await client.hello(CLIENT_VERSION);
-    writeResult(hello, args.json);
+    writeResult(await client.hello(CLIENT_VERSION), args.json);
     return;
   }
 
@@ -55,19 +99,33 @@ async function runCommand(client: AgentClient, args: ParsedArgs): Promise<void> 
     if (!name) {
       throw new Error("workspace create requires a name");
     }
+    writeResult(await client.createWorkspace(name), args.json);
+    return;
+  }
 
-    const result = await client.createWorkspace(name);
-    writeResult(result, args.json);
+  if ((resource === "session" && action === "list") || resource === "sessions") {
+    const workspaceID = resource === "sessions" ? action : rest[0];
+    if (!workspaceID) {
+      throw new Error("session list requires a workspace id");
+    }
+
+    const result = await client.listSessions(workspaceID);
+    if (args.json) {
+      writeResult(result, true);
+    } else {
+      renderSessions(result.sessions, process.stdout);
+    }
     return;
   }
 
   if ((resource === "terminal" && action === "attach") || resource === "attach") {
     const workspaceID = resource === "attach" ? action : rest[0];
+    const session = resource === "attach" ? rest[0] : rest[1];
     if (!workspaceID) {
       throw new Error("terminal attach requires a workspace id");
     }
 
-    await attachTerminalPresentation(client, workspaceID, {
+    await attachTerminalPresentation(client, workspaceID, session ?? "main", {
       input: process.stdin,
       output: process.stdout,
       error: process.stderr,
@@ -90,9 +148,67 @@ async function runCommand(client: AgentClient, args: ParsedArgs): Promise<void> 
   throw new Error(`unknown command: ${args.command.join(" ")}`);
 }
 
+function createClient(args: ParsedArgs): AgentClient {
+  if (args.local) {
+    return new AgentClient(createAgentProcessConnection(args.agentBinary));
+  }
+
+  if (!args.host) {
+    throw new Error("remote commands require --host, or use --local for a local agent");
+  }
+
+  return new AgentClient(createSSHAgentConnection(args.host));
+}
+
+async function chooseHost(): Promise<string | undefined> {
+  const hosts = listSSHHosts();
+  if (hosts.length === 0) {
+    const typed = await promptText({ input: process.stdin, output: process.stdout }, "SSH host: ");
+    return typed || undefined;
+  }
+
+  const selected = await selectOne<SSHHost>(
+    { input: process.stdin, output: process.stdout },
+    "SSH hosts",
+    hosts,
+    (host) => `${host.alias}${host.user ? ` (${host.user})` : ""}${host.hostName ? ` -> ${host.hostName}` : ""}`,
+  );
+  return selected?.alias;
+}
+
+async function chooseWorkspace(client: AgentClient): Promise<Workspace | undefined> {
+  let { workspaces } = await client.listWorkspaces();
+  if (workspaces.length === 0) {
+    const name = await promptText({ input: process.stdin, output: process.stdout }, "No workspaces. Create workspace name: ");
+    if (!name) {
+      return undefined;
+    }
+    const created = await client.createWorkspace(name);
+    workspaces = [created.workspace];
+  }
+
+  return selectOne<Workspace>(
+    { input: process.stdin, output: process.stdout },
+    "Workspaces",
+    workspaces,
+    (workspace) => `${workspace.name}  ${workspace.status ?? "unknown"}  ${workspace.path}`,
+  );
+}
+
+async function chooseSession(client: AgentClient, workspace: Workspace): Promise<Session | undefined> {
+  const { sessions } = await client.listSessions(workspace.id);
+  return selectOne<Session>(
+    { input: process.stdin, output: process.stdout },
+    "Sessions",
+    sessions,
+    (session) => `${session.name}  ${session.status}`,
+  );
+}
+
 function parseArgs(argv: string[]): ParsedArgs {
   const parsed: ParsedArgs = {
     agentBinary: resolveDefaultAgentBinary(),
+    local: false,
     json: false,
     command: [],
   };
@@ -112,6 +228,26 @@ function parseArgs(argv: string[]): ParsedArgs {
 
     if (arg.startsWith("--agent-binary=")) {
       parsed.agentBinary = arg.slice("--agent-binary=".length);
+      continue;
+    }
+
+    if (arg === "--host") {
+      const value = argv[i + 1];
+      if (!value) {
+        throw new Error("--host requires an SSH host");
+      }
+      parsed.host = value;
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--host=")) {
+      parsed.host = arg.slice("--host=".length);
+      continue;
+    }
+
+    if (arg === "--local") {
+      parsed.local = true;
       continue;
     }
 
@@ -138,23 +274,27 @@ function writeResult(value: unknown, json: boolean): void {
 function printUsage(): void {
   process.stdout.write(`repttyl-client
 
-Usage:
-  repttyl-client [--agent-binary PATH] [--json] hello
-  repttyl-client [--agent-binary PATH] [--json] workspace list
-  repttyl-client [--agent-binary PATH] [--json] workspace create <name>
-  repttyl-client [--agent-binary PATH] terminal attach <workspace-id>
-  repttyl-client [--agent-binary PATH] [--json] session kill <workspace-id> [session]
+Default:
+  repttyl-client
+  repttyl-client tui
 
-Aliases:
-  list
-  workspaces
-  create <name>
-  attach <workspace-id>
-  kill <workspace-id> [session]
+Remote SSH:
+  repttyl-client --host <ssh-host> workspace list
+  repttyl-client --host <ssh-host> sessions <workspace-id>
+  repttyl-client --host <ssh-host> attach <workspace-id> [session]
 
-Layering:
-  Shared protocol/client internals live in @repttyl/protocol-client.
-  This CLI owns Node subprocess transport and terminal/TUI presentation.
+Local development:
+  repttyl-client --local [--agent-binary PATH] workspace list
+  repttyl-client --local [--agent-binary PATH] workspace create <name>
+  repttyl-client --local [--agent-binary PATH] attach <workspace-id> [session]
+
+Other:
+  --json
+  --local
+  --host <ssh-host>
+  --agent-binary <path>
+
+The CLI never invokes tmux directly. It connects to the remote agent over SSH and the agent owns tmux.
 `);
 }
 

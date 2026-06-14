@@ -1,6 +1,56 @@
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
+import type { Session, TerminalError, TerminalOutput, Workspace } from "@repttyl/protocol-client";
+import type { SSHHost } from "@repttyl/client-node";
 
-contextBridge.exposeInMainWorld("repttyl", {
-  version: "0.1.0",
-});
+type ConnectRequest =
+  | { mode: "ssh"; host: string }
+  | { mode: "local"; agentBinary?: string };
 
+type ConnectionState = {
+  connected: boolean;
+  mode?: "ssh" | "local";
+  host?: string;
+  agentVersion?: string;
+  protocolVersion?: string;
+  error?: string;
+};
+
+type TerminalAttachRequest = {
+  workspaceID: string;
+  session: string;
+  cols: number;
+  rows: number;
+};
+
+const api = {
+  listHosts: (): Promise<SSHHost[]> => ipcRenderer.invoke("repttyl:hosts:list"),
+  getConnectionState: (): Promise<ConnectionState> => ipcRenderer.invoke("repttyl:connection:state"),
+  connect: (request: ConnectRequest): Promise<ConnectionState> => ipcRenderer.invoke("repttyl:connection:connect", request),
+  disconnect: (): Promise<ConnectionState> => ipcRenderer.invoke("repttyl:connection:disconnect"),
+  listWorkspaces: (): Promise<Workspace[]> => ipcRenderer.invoke("repttyl:workspace:list"),
+  createWorkspace: (name: string): Promise<Workspace> => ipcRenderer.invoke("repttyl:workspace:create", name),
+  listSessions: (workspaceID: string): Promise<Session[]> => ipcRenderer.invoke("repttyl:session:list", workspaceID),
+  attachTerminal: (request: TerminalAttachRequest): Promise<{ stream: string }> => ipcRenderer.invoke("repttyl:terminal:attach", request),
+  sendTerminalInput: (stream: string, data: string): Promise<void> => ipcRenderer.invoke("repttyl:terminal:input", { stream, data }),
+  resizeTerminal: (stream: string, cols: number, rows: number): Promise<void> =>
+    ipcRenderer.invoke("repttyl:terminal:resize", { stream, cols, rows }),
+  onTerminalOutput: (listener: (message: TerminalOutput) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, message: TerminalOutput) => listener(message);
+    ipcRenderer.on("repttyl:terminal:output", wrapped);
+    return () => ipcRenderer.off("repttyl:terminal:output", wrapped);
+  },
+  onTerminalError: (listener: (message: TerminalError) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, message: TerminalError) => listener(message);
+    ipcRenderer.on("repttyl:terminal:error", wrapped);
+    return () => ipcRenderer.off("repttyl:terminal:error", wrapped);
+  },
+  onConnectionState: (listener: (state: ConnectionState) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, state: ConnectionState) => listener(state);
+    ipcRenderer.on("repttyl:connection:state", wrapped);
+    return () => ipcRenderer.off("repttyl:connection:state", wrapped);
+  },
+};
+
+contextBridge.exposeInMainWorld("repttyl", api);
+
+export type RepttylDesktopAPI = typeof api;

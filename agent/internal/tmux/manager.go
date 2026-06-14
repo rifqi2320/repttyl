@@ -47,6 +47,11 @@ type Manager struct {
 	shell  string
 }
 
+type Session struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
 func New() *Manager {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -72,6 +77,15 @@ func (m *Manager) Status(ctx context.Context, workspace metadata.Workspace) stri
 		return "stopped"
 	}
 	return "running"
+}
+
+func (m *Manager) ListSessions(ctx context.Context, workspace metadata.Workspace) []Session {
+	return []Session{
+		{
+			Name:   SessionName,
+			Status: m.Status(ctx, workspace),
+		},
+	}
 }
 
 func (m *Manager) EnsureSession(ctx context.Context, workspace metadata.Workspace) error {
@@ -125,6 +139,13 @@ func (m *Manager) KillSession(ctx context.Context, workspace metadata.Workspace,
 		session,
 	)
 	return cmd.Run()
+}
+
+func NormalizeSessionName(session string) string {
+	if session == "" {
+		return SessionName
+	}
+	return session
 }
 
 func (m *Manager) hasSession(ctx context.Context, workspace metadata.Workspace) error {

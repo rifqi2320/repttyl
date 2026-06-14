@@ -96,6 +96,8 @@ func (s *Server) handle(ctx context.Context, request protocol.Request) {
 		s.handleWorkspaceCreate(ctx, request)
 	case "terminal.attach":
 		s.handleTerminalAttach(ctx, request)
+	case "session.list":
+		s.handleSessionList(ctx, request)
 	case "events.subscribe":
 		s.handleEventsSubscribe(ctx, request)
 	case "input":
@@ -184,6 +186,11 @@ func (s *Server) handleTerminalAttach(ctx context.Context, request protocol.Requ
 		_ = s.sendError(request.ID, "TMUX_ERROR", err.Error())
 		return
 	}
+	session := tmux.NormalizeSessionName(request.Session)
+	if session != tmux.SessionName {
+		_ = s.sendError(request.ID, "SESSION_NOT_FOUND", "Session not found")
+		return
+	}
 
 	streamID, err := newStreamID()
 	if err != nil {
@@ -194,7 +201,7 @@ func (s *Server) handleTerminalAttach(ctx context.Context, request protocol.Requ
 	attachment, err := terminal.Attach(
 		ctx,
 		s.tmux.SocketPath(workspace),
-		tmux.SessionName,
+		session,
 		request.Cols,
 		request.Rows,
 		func(output []byte) {
@@ -212,6 +219,25 @@ func (s *Server) handleTerminalAttach(ctx context.Context, request protocol.Requ
 
 	_ = s.store.Touch(workspace.ID)
 	_ = s.sendSuccess(request.ID, map[string]any{"stream": streamID})
+}
+
+func (s *Server) handleSessionList(ctx context.Context, request protocol.Request) {
+	if !request.HasID() {
+		_ = s.sendError(nil, "MISSING_ID", "session.list requires an id")
+		return
+	}
+	if request.WorkspaceID == "" {
+		_ = s.sendError(request.ID, "WORKSPACE_NOT_FOUND", "Workspace id is required")
+		return
+	}
+
+	workspace, ok := s.store.Get(request.WorkspaceID)
+	if !ok {
+		_ = s.sendError(request.ID, "WORKSPACE_NOT_FOUND", "Workspace not found")
+		return
+	}
+
+	_ = s.sendSuccess(request.ID, map[string]any{"sessions": s.tmux.ListSessions(ctx, workspace)})
 }
 
 func (s *Server) handleTerminalInput(request protocol.Request) {

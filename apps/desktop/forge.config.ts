@@ -7,6 +7,8 @@ import { WebpackPlugin } from "@electron-forge/plugin-webpack";
 const config = {
   packagerConfig: {
     asar: true,
+    executableName: "repttyl-desktop",
+    name: "Repttyl",
   },
   makers: [new MakerSquirrel({}), new MakerZIP({}, ["darwin"]), new MakerDeb({}), new MakerRpm({})],
   plugins: [

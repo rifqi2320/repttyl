@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -12,6 +13,12 @@ import {
 
 type MessageListener = (message: InboundAgentMessage) => void;
 type CloseListener = (error?: Error) => void;
+
+export type SSHHost = {
+  alias: string;
+  hostName?: string;
+  user?: string;
+};
 
 export class AgentProcessConnection implements AgentConnection {
   private readonly decoder = new JsonLineDecoder();
@@ -78,13 +85,67 @@ export class AgentProcessConnection implements AgentConnection {
   }
 }
 
-export function createAgentProcessConnection(agentBinary: string): AgentProcessConnection {
+export function createAgentProcessConnection(agentBinary = resolveDefaultAgentBinary()): AgentProcessConnection {
   const child = spawn(agentBinary, ["agent", "--stdio"], {
     stdio: ["pipe", "pipe", "pipe"],
     env: process.env,
   });
 
   return new AgentProcessConnection(child);
+}
+
+export function createSSHAgentConnection(host: string, remoteCommand = "repttyl"): AgentProcessConnection {
+  const child = spawn("ssh", ["-T", host, remoteCommand, "agent", "--stdio"], {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: process.env,
+  });
+
+  return new AgentProcessConnection(child);
+}
+
+export function listSSHHosts(configPath = path.join(os.homedir(), ".ssh", "config")): SSHHost[] {
+  if (!existsSync(configPath)) {
+    return [];
+  }
+
+  const hosts: SSHHost[] = [];
+  let current: SSHHost | undefined;
+
+  for (const rawLine of readFileSync(configPath, "utf8").split(/\r?\n/)) {
+    const line = stripComment(rawLine).trim();
+    if (!line) {
+      continue;
+    }
+
+    const [keywordRaw, ...rest] = line.split(/\s+/);
+    const keyword = keywordRaw.toLowerCase();
+    const value = rest.join(" ");
+
+    if (keyword === "host") {
+      if (current) {
+        hosts.push(current);
+      }
+      const alias = value.split(/\s+/).find((candidate) => !candidate.includes("*") && !candidate.includes("?"));
+      current = alias ? { alias } : undefined;
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    if (keyword === "hostname") {
+      current.hostName = value;
+    } else if (keyword === "user") {
+      current.user = value;
+    }
+  }
+
+  if (current) {
+    hosts.push(current);
+  }
+
+  return dedupeHosts(hosts);
 }
 
 export function resolveDefaultAgentBinary(): string {
@@ -100,7 +161,23 @@ export function resolveDefaultAgentBinary(): string {
   return "repttyl";
 }
 
+function stripComment(line: string): string {
+  const index = line.indexOf("#");
+  return index >= 0 ? line.slice(0, index) : line;
+}
+
+function dedupeHosts(hosts: SSHHost[]): SSHHost[] {
+  const seen = new Set<string>();
+  return hosts.filter((host) => {
+    if (seen.has(host.alias)) {
+      return false;
+    }
+    seen.add(host.alias);
+    return true;
+  });
+}
+
 function projectRoot(): string {
   const thisFile = fileURLToPath(import.meta.url);
-  return path.resolve(path.dirname(thisFile), "..", "..", "..", "..");
+  return path.resolve(path.dirname(thisFile), "..", "..", "..");
 }

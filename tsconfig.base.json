@@ -9,8 +9,8 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
+      "@repttyl/client-node": ["packages/client-node/src/index.ts"],
       "@repttyl/protocol-client": ["packages/protocol-client/src/index.ts"]
     }
   }
 }
-
