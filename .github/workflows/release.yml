@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to create or update, for example v0.1.1"
+        description: "Release tag to create or update, for example v0.1.2-rc.1"
         required: true
         type: string
 
@@ -323,6 +323,10 @@ jobs:
           set -euo pipefail
           mapfile -t assets < <(find artifacts -type f -print | sort)
           printf '%s\n' "${assets[@]}"
+          release_flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
 
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" \
@@ -334,5 +338,6 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --title "$RELEASE_TAG" \
               --generate-notes \
+              "${release_flags[@]}" \
               "${assets[@]}"
           fi

@@ -532,7 +532,7 @@ function readSettingsForm(): Partial<AppSettings> {
     remoteAgent: {
       autoInstall: checkboxValue("settingRemoteAutoInstall"),
       repository: inputValue("settingRemoteRepository") || "rifqi2320/repttyl",
-      version: inputValue("settingRemoteVersion") || "v0.1.1",
+      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.1",
     },
   };
 }

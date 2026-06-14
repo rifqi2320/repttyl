@@ -1,6 +1,6 @@
 package version
 
 const (
-	AgentVersion    = "0.1.1"
+	AgentVersion    = "0.1.2-rc.1"
 	ProtocolVersion = "0.1"
 )

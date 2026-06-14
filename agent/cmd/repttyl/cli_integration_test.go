@@ -20,7 +20,7 @@ func TestCLICommandMode(t *testing.T) {
 	env := testEnv(t)
 
 	version := runCLI(t, bin, env, "version", "--json")
-	assertJSONField(t, version.stdout, "agent_version", "0.1.1")
+	assertJSONField(t, version.stdout, "agent_version", "0.1.2-rc.1")
 	assertJSONField(t, version.stdout, "protocol_version", "0.1")
 
 	probe := runCLI(t, bin, env, "probe", "--json")
@@ -86,7 +86,7 @@ func TestCLIAgentProtocolEndToEnd(t *testing.T) {
 	agent.send(t, `{"id":1,"op":"hello","client_version":"cli-integration-test"}`)
 	hello := agent.readID(t, "1")
 	requireOK(t, hello, true)
-	requireField(t, hello, "agent_version", "0.1.1")
+	requireField(t, hello, "agent_version", "0.1.2-rc.1")
 
 	agent.send(t, `{"id":2,"op":"workspace.list"}`)
 	initialList := agent.readID(t, "2")

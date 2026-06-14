@@ -2,7 +2,7 @@
 
 Repttyl is a desktop-first shell workspace system built around a small agent, transport adapters, and persistent tmux-backed terminal sessions.
 
-The current release focuses on the remote agent and CLI. The desktop app is scaffolded in the repo but is not part of the first release artifacts yet.
+The current release ships the remote agent, CLI client, and Electron desktop app artifacts.
 
 ## What It Does
 
@@ -36,17 +36,17 @@ https://github.com/rifqi2320/repttyl/releases
 Agent archives are named by platform:
 
 ```text
-repttyl-v0.1.0-linux-amd64.tar.gz
-repttyl-v0.1.0-linux-arm64.tar.gz
-repttyl-v0.1.0-darwin-amd64.tar.gz
-repttyl-v0.1.0-darwin-arm64.tar.gz
-repttyl-v0.1.0-windows-amd64.tar.gz
+repttyl-v0.1.2-rc.1-linux-amd64.tar.gz
+repttyl-v0.1.2-rc.1-linux-arm64.tar.gz
+repttyl-v0.1.2-rc.1-darwin-amd64.tar.gz
+repttyl-v0.1.2-rc.1-darwin-arm64.tar.gz
+repttyl-v0.1.2-rc.1-windows-amd64.tar.gz
 ```
 
 The CLI archive is platform-independent and requires Node.js:
 
 ```text
-repttyl-client-v0.1.0.tar.gz
+repttyl-client-v0.1.2-rc.1.tar.gz
 ```
 
 ## Build From Source
