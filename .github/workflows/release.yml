@@ -168,6 +168,10 @@ jobs:
       - name: Rebuild Electron dependencies
         run: pnpm rebuild electron electron-winstaller nx
 
+      - name: Rebuild macOS DMG dependencies
+        if: runner.os == 'macOS'
+        run: pnpm rebuild fs-xattr macos-alias
+
       - name: Build desktop dependencies
         run: pnpm --filter @repttyl/client-node build
 
