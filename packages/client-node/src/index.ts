@@ -14,7 +14,7 @@ import {
 type MessageListener = (message: InboundAgentMessage) => void;
 type CloseListener = (error?: Error) => void;
 
-const DEFAULT_AGENT_VERSION = "v0.1.2-rc.6";
+const DEFAULT_AGENT_VERSION = "v0.1.2-rc.7";
 const DEFAULT_RELEASE_REPOSITORY = "rifqi2320/repttyl";
 
 export type SSHHost = {

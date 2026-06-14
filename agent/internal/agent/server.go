@@ -198,6 +198,7 @@ func (s *Server) handleTerminalAttach(ctx context.Context, request protocol.Requ
 		return
 	}
 
+	closed := make(chan error, 1)
 	attachment, err := terminal.Attach(
 		ctx,
 		s.tmux.SocketPath(workspace),
@@ -208,9 +209,9 @@ func (s *Server) handleTerminalAttach(ctx context.Context, request protocol.Requ
 			_ = s.sendStream(streamID, "output", string(output))
 		},
 		func(err error) {
-			s.forgetStream(streamID)
-			if err != nil {
-				_ = s.sendStreamError(streamID, "TERMINAL_CLOSED", err.Error())
+			select {
+			case closed <- err:
+			default:
 			}
 		},
 	)
@@ -222,9 +223,15 @@ func (s *Server) handleTerminalAttach(ctx context.Context, request protocol.Requ
 	s.streamMu.Lock()
 	s.streams[streamID] = activeStream{workspaceID: workspace.ID, attachment: attachment}
 	s.streamMu.Unlock()
+	if attachment.Closed() {
+		s.removeStream(streamID)
+		_ = s.sendError(request.ID, "ATTACH_FAILED", "Terminal attach closed before the stream was ready")
+		return
+	}
 
 	_ = s.store.Touch(workspace.ID)
 	_ = s.sendSuccess(request.ID, map[string]any{"stream": streamID})
+	go s.watchStreamClose(streamID, attachment, closed)
 }
 
 func (s *Server) handleSessionList(ctx context.Context, request protocol.Request) {
@@ -356,6 +363,25 @@ func (s *Server) forgetStream(streamID string) {
 	s.streamMu.Lock()
 	delete(s.streams, streamID)
 	s.streamMu.Unlock()
+}
+
+func (s *Server) watchStreamClose(streamID string, attachment *terminal.Attachment, closed <-chan error) {
+	select {
+	case err := <-closed:
+		s.forgetStream(streamID)
+		if err != nil {
+			_ = s.sendStreamError(streamID, "TERMINAL_CLOSED", err.Error())
+		}
+	case <-attachment.Done():
+		select {
+		case err := <-closed:
+			s.forgetStream(streamID)
+			if err != nil {
+				_ = s.sendStreamError(streamID, "TERMINAL_CLOSED", err.Error())
+			}
+		default:
+		}
+	}
 }
 
 func (s *Server) closeWorkspaceStreams(workspaceID string) {

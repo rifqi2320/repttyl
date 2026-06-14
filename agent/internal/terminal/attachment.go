@@ -21,6 +21,8 @@ type Attachment struct {
 	closed bool
 }
 
+var ErrClosed = errors.New("terminal attachment closed")
+
 func Attach(ctx context.Context, socketPath string, session string, cols int, rows int, onOutput func([]byte), onClose func(error)) (*Attachment, error) {
 	if cols <= 0 {
 		cols = 120
@@ -30,7 +32,7 @@ func Attach(ctx context.Context, socketPath string, session string, cols int, ro
 	}
 
 	cmd := exec.CommandContext(ctx, "tmux", "-S", socketPath, "attach-session", "-t", session)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = append(os.Environ(), "TERM="+attachTERM())
 	file, err := pty.StartWithSize(cmd, &pty.Winsize{
 		Rows: uint16(rows),
 		Cols: uint16(cols),
@@ -81,8 +83,9 @@ func Attach(ctx context.Context, socketPath string, session string, cols int, ro
 			}
 			if err != nil {
 				waitErr := cmd.Wait()
+				alreadyClosed := attachment.markClosed()
 				exited <- waitErr
-				if !attachment.isClosed() && onClose != nil {
+				if !alreadyClosed && onClose != nil {
 					onClose(attachExitError(waitErr, earlyOutput))
 				}
 				return
@@ -112,6 +115,9 @@ func (a *Attachment) Write(data string) error {
 	a.writeM.Lock()
 	defer a.writeM.Unlock()
 
+	if a.isClosed() {
+		return ErrClosed
+	}
 	_, err := a.file.WriteString(data)
 	return err
 }
@@ -120,6 +126,9 @@ func (a *Attachment) Resize(cols int, rows int) error {
 	if cols <= 0 || rows <= 0 {
 		return nil
 	}
+	if a.isClosed() {
+		return ErrClosed
+	}
 	return pty.Setsize(a.file, &pty.Winsize{
 		Rows: uint16(rows),
 		Cols: uint16(cols),
@@ -127,19 +136,36 @@ func (a *Attachment) Resize(cols int, rows int) error {
 }
 
 func (a *Attachment) Close() error {
-	a.closeM.Lock()
-	a.closed = true
-	a.closeM.Unlock()
+	alreadyClosed := a.markClosed()
 
-	err := a.file.Close()
+	var err error
+	if !alreadyClosed {
+		err = a.file.Close()
+	}
 	<-a.done
 	return err
+}
+
+func (a *Attachment) Closed() bool {
+	return a.isClosed()
+}
+
+func (a *Attachment) Done() <-chan struct{} {
+	return a.done
 }
 
 func (a *Attachment) isClosed() bool {
 	a.closeM.Lock()
 	defer a.closeM.Unlock()
 	return a.closed
+}
+
+func (a *Attachment) markClosed() bool {
+	a.closeM.Lock()
+	defer a.closeM.Unlock()
+	alreadyClosed := a.closed
+	a.closed = true
+	return alreadyClosed
 }
 
 func attachExitError(err error, output []byte) error {
@@ -155,4 +181,13 @@ func errOrClosed(err error) error {
 		return err
 	}
 	return errors.New("terminal attach closed")
+}
+
+func attachTERM() string {
+	for _, term := range []string{"xterm-256color", "screen-256color", "xterm", "vt100"} {
+		if exec.Command("infocmp", term).Run() == nil {
+			return term
+		}
+	}
+	return "vt100"
 }

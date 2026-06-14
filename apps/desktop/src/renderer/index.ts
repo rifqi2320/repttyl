@@ -142,7 +142,7 @@ app.innerHTML = `
             <label class="setting-row">
               <span>
                 <strong>Include release candidates</strong>
-                <small>Consider prereleases such as <code>v0.1.2-rc.6</code>.</small>
+                <small>Consider prereleases such as <code>v0.1.2-rc.7</code>.</small>
               </span>
               <input id="settingIncludePrereleases" type="checkbox" />
             </label>
@@ -234,6 +234,10 @@ window.repttyl.onTerminalOutput((message: TerminalOutput) => {
 window.repttyl.onTerminalError((message: TerminalError) => {
   if (message.stream === state.stream) {
     terminal.writeln(`\r\n${message.error.code}: ${message.error.message}`);
+    if (isFatalTerminalError(message.error.code)) {
+      state.stream = undefined;
+      render();
+    }
   }
 });
 
@@ -681,7 +685,7 @@ function readSettingsForm(): Partial<AppSettings> {
     remoteAgent: {
       autoInstall: checkboxValue("settingRemoteAutoInstall"),
       repository: inputValue("settingRemoteRepository") || "rifqi2320/repttyl",
-      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.6",
+      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.7",
     },
   };
 }
@@ -706,6 +710,10 @@ function resizeTerminal(): void {
   if (state.stream) {
     void window.repttyl.resizeTerminal(state.stream, size.cols, size.rows);
   }
+}
+
+function isFatalTerminalError(code: string): boolean {
+  return code === "TERMINAL_CLOSED" || code === "STREAM_NOT_FOUND" || code === "WRITE_FAILED" || code === "RESIZE_FAILED";
 }
 
 function terminalSize(): { cols: number; rows: number } {

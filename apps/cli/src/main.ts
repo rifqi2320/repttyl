@@ -13,7 +13,7 @@ import { renderSessions } from "./presentation/sessions.js";
 import { promptText, selectOne } from "./presentation/select.js";
 import { renderWorkspaces } from "./presentation/text.js";
 
-const CLIENT_VERSION = "0.1.2-rc.6";
+const CLIENT_VERSION = "0.1.2-rc.7";
 
 type ParsedArgs = {
   agentBinary: string;
