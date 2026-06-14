@@ -165,8 +165,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build desktop dependencies
+        run: pnpm --filter @repttyl/client-node build
+
       - name: Package desktop
-        run: pnpm --filter @repttyl/desktop package -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+        run: |
+          node -e "require('node:fs').rmSync('apps/desktop/out',{recursive:true,force:true})"
+          pnpm --dir apps/desktop exec electron-forge package --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
 
       - name: Archive desktop on Linux
         if: matrix.archive == 'tar.gz'
