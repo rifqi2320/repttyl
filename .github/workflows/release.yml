@@ -139,12 +139,12 @@ jobs:
             platform: darwin
             arch: x64
             package-dir: Repttyl-darwin-x64
-            archive: zip
+            archive: dmg
           - os: macos-latest
             platform: darwin
             arch: arm64
             package-dir: Repttyl-darwin-arm64
-            archive: zip
+            archive: dmg
           - os: windows-latest
             platform: win32
             arch: x64
@@ -172,9 +172,16 @@ jobs:
         run: pnpm --filter @repttyl/client-node build
 
       - name: Package desktop
+        if: matrix.archive != 'dmg'
         run: |
           node -e "require('node:fs').rmSync('apps/desktop/out',{recursive:true,force:true})"
           pnpm --dir apps/desktop exec electron-forge package --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+
+      - name: Make desktop DMG
+        if: matrix.archive == 'dmg'
+        run: |
+          node -e "require('node:fs').rmSync('apps/desktop/out',{recursive:true,force:true})"
+          pnpm --dir apps/desktop exec electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
 
       - name: Archive desktop on Linux
         if: matrix.archive == 'tar.gz'
@@ -203,19 +210,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist-release
-          name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.zip"
-          package_dir=""
+          name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.dmg"
+          dmg_path=""
           for _ in $(seq 1 60); do
-            package_dir=$(find . -path './node_modules' -prune -o -type d \( -name "${{ matrix.package-dir }}" -o -name "*-${{ matrix.platform }}-${{ matrix.arch }}" \) -print -quit)
-            [ -n "${package_dir}" ] && break
+            dmg_path=$(find apps/desktop/out -type f -name "*.dmg" -print -quit 2>/dev/null || true)
+            [ -n "${dmg_path}" ] && break
             sleep 2
           done
-          if [ -z "${package_dir}" ]; then
-            echo "Could not find ${{ matrix.package-dir }}"
-            find . -path './node_modules' -prune -o -type d \( -name '*Repttyl*' -o -name '*desktop*' -o -name '*out*' -o -name '*${{ matrix.platform }}*' \) -print | sort
+          if [ -z "${dmg_path}" ]; then
+            echo "Could not find macOS DMG"
+            find apps/desktop/out -maxdepth 6 -print 2>/dev/null | sort || true
             exit 1
           fi
-          ditto -c -k --sequesterRsrc --keepParent "${package_dir}" "dist-release/${name}"
+          cp "${dmg_path}" "dist-release/${name}"
           (cd dist-release && shasum -a 256 "${name}" > "${name}.sha256")
 
       - name: Archive desktop on Windows

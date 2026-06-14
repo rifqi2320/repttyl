@@ -1,4 +1,5 @@
 import { MakerDeb } from "@electron-forge/maker-deb";
+import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerRpm } from "@electron-forge/maker-rpm";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -10,7 +11,13 @@ const config = {
     executableName: "repttyl-desktop",
     name: "Repttyl",
   },
-  makers: [new MakerSquirrel({}), new MakerZIP({}, ["darwin"]), new MakerDeb({}), new MakerRpm({})],
+  makers: [
+    new MakerSquirrel({}),
+    new MakerZIP({}, ["darwin"]),
+    new MakerDMG({ format: "ULFO" }, ["darwin"]),
+    new MakerDeb({}),
+    new MakerRpm({}),
+  ],
   plugins: [
     new WebpackPlugin({
       mainConfig: "./webpack.main.config.js",
