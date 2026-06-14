@@ -20,7 +20,7 @@ func TestCLICommandMode(t *testing.T) {
 	env := testEnv(t)
 
 	version := runCLI(t, bin, env, "version", "--json")
-	assertJSONField(t, version.stdout, "agent_version", "0.1.2-rc.2")
+	assertJSONField(t, version.stdout, "agent_version", "0.1.2-rc.3")
 	assertJSONField(t, version.stdout, "protocol_version", "0.1")
 
 	probe := runCLI(t, bin, env, "probe", "--json")
@@ -86,7 +86,7 @@ func TestCLIAgentProtocolEndToEnd(t *testing.T) {
 	agent.send(t, `{"id":1,"op":"hello","client_version":"cli-integration-test"}`)
 	hello := agent.readID(t, "1")
 	requireOK(t, hello, true)
-	requireField(t, hello, "agent_version", "0.1.2-rc.2")
+	requireField(t, hello, "agent_version", "0.1.2-rc.3")
 
 	agent.send(t, `{"id":2,"op":"workspace.list"}`)
 	initialList := agent.readID(t, "2")
@@ -268,6 +268,42 @@ func TestCLIAgentProtocolErrors(t *testing.T) {
 	missingStream := agent.read(t)
 	requireField(t, missingStream, "op", "error")
 	requireErrorCode(t, missingStream, "STREAM_NOT_FOUND")
+}
+
+func TestCLIAgentRemovesClosedTerminalStreams(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not available on PATH")
+	}
+
+	bin := buildCLI(t)
+	env := testEnv(t)
+	agent := startAgent(t, bin, env)
+	defer agent.close(t)
+
+	agent.send(t, `{"id":1,"op":"workspace.create","name":"closed-stream"}`)
+	created := agent.readID(t, "1")
+	requireOK(t, created, true)
+	workspace := requireObject(t, created, "workspace")
+	workspaceID := requireString(t, workspace, "id")
+	runtimePath := requireString(t, workspace, "runtime_path")
+
+	agent.send(t, fmt.Sprintf(`{"id":2,"op":"terminal.attach","workspace_id":%q,"cols":100,"rows":30}`, workspaceID))
+	attached := agent.readID(t, "2")
+	requireOK(t, attached, true)
+	streamID := requireString(t, attached, "stream")
+
+	socketPath := filepath.Join(runtimePath, "tmux.sock")
+	if err := exec.Command("tmux", "-S", socketPath, "kill-server").Run(); err != nil {
+		t.Fatalf("kill tmux server: %v", err)
+	}
+
+	agent.readStreamErrorCode(t, streamID, "TERMINAL_CLOSED")
+
+	agent.send(t, fmt.Sprintf(`{"stream":%q,"op":"resize","cols":120,"rows":40}`, streamID))
+	agent.readStreamErrorCode(t, streamID, "STREAM_NOT_FOUND")
+
+	agent.send(t, fmt.Sprintf(`{"stream":%q,"op":"input","data":"echo should-not-write\n"}`, streamID))
+	agent.readStreamErrorCode(t, streamID, "STREAM_NOT_FOUND")
 }
 
 func TestCLIAgentDaemonEvents(t *testing.T) {
@@ -541,6 +577,43 @@ func (a *runningAgent) readUntilOutputContains(t *testing.T, streamID string, su
 			}
 		case <-deadline:
 			t.Fatalf("timed out waiting for terminal output containing %q; saw %q", substring, seen.String())
+		}
+	}
+}
+
+func (a *runningAgent) readStreamErrorCode(t *testing.T, streamID string, codes ...string) {
+	t.Helper()
+
+	allowed := make(map[string]bool, len(codes))
+	for _, code := range codes {
+		allowed[code] = true
+	}
+
+	deadline := time.After(8 * time.Second)
+	for {
+		select {
+		case line, ok := <-a.lines:
+			if !ok {
+				t.Fatal("agent stdout closed before terminal error was received")
+			}
+			var message map[string]any
+			if err := json.Unmarshal([]byte(line), &message); err != nil {
+				t.Fatalf("agent stream message is not JSON: %v\n%s", err, line)
+			}
+			if message["stream"] != streamID || message["op"] != "error" {
+				continue
+			}
+			errorObject, ok := message["error"].(map[string]any)
+			if !ok {
+				t.Fatalf("stream error = %#v, want object", message["error"])
+			}
+			code := fmt.Sprint(errorObject["code"])
+			if !allowed[code] {
+				t.Fatalf("stream error code = %q, want one of %v", code, codes)
+			}
+			return
+		case <-deadline:
+			t.Fatalf("timed out waiting for terminal error with code %v", codes)
 		}
 	}
 }

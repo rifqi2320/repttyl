@@ -81,7 +81,7 @@ const defaultSettings: AppSettings = {
   remoteAgent: {
     autoInstall: true,
     repository: "rifqi2320/repttyl",
-    version: "v0.1.2-rc.2",
+    version: "v0.1.2-rc.3",
   },
 };
 
@@ -230,7 +230,7 @@ function registerIPC(): void {
     bindTerminalEvents(nextClient);
 
     try {
-      const hello = await nextClient.hello("0.1.2-rc.2");
+      const hello = await nextClient.hello("0.1.2-rc.3");
       state = {
         connected: true,
         mode: request.mode,

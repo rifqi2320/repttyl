@@ -7,7 +7,7 @@ The current release ships the remote agent, CLI client, and Electron desktop app
 ## What It Does
 
 - Uses OpenSSH for remote hosts, Docker exec for containers, and a local subprocess transport for same-machine development.
-- Runs `repttyl agent --stdio` either locally or under the remote SSH user, bootstrapping the remote agent from GitHub when needed.
+- Runs `repttyl agent --stdio` either locally or under the remote SSH user, bootstrapping the agent from GitHub when needed.
 - Keeps shell state alive through tmux after client disconnects.
 - Stores named workspaces under the remote user's home directory.
 - Provides a CLI client for listing, creating, attaching to, and killing workspace sessions.
@@ -36,17 +36,17 @@ https://github.com/rifqi2320/repttyl/releases
 Agent archives are named by platform:
 
 ```text
-repttyl-v0.1.2-rc.2-linux-amd64.tar.gz
-repttyl-v0.1.2-rc.2-linux-arm64.tar.gz
-repttyl-v0.1.2-rc.2-darwin-amd64.tar.gz
-repttyl-v0.1.2-rc.2-darwin-arm64.tar.gz
-repttyl-v0.1.2-rc.2-windows-amd64.tar.gz
+repttyl-v0.1.2-rc.3-linux-amd64.tar.gz
+repttyl-v0.1.2-rc.3-linux-arm64.tar.gz
+repttyl-v0.1.2-rc.3-darwin-amd64.tar.gz
+repttyl-v0.1.2-rc.3-darwin-arm64.tar.gz
+repttyl-v0.1.2-rc.3-windows-amd64.tar.gz
 ```
 
 The CLI archive is platform-independent and requires Node.js:
 
 ```text
-repttyl-client-v0.1.2-rc.2.tar.gz
+repttyl-client-v0.1.2-rc.3.tar.gz
 ```
 
 ## Build From Source
@@ -124,6 +124,8 @@ node apps/cli/dist/main.js --local --agent-binary ./agent/bin/repttyl workspace 
 node apps/cli/dist/main.js --local --agent-binary ./agent/bin/repttyl attach <workspace-id>
 node apps/cli/dist/main.js --local --agent-binary ./agent/bin/repttyl kill <workspace-id>
 ```
+
+When `--agent-binary` is omitted and `repttyl` is missing or does not match the client release, local mode downloads the matching agent into `~/.local/bin/repttyl` and runs it from there. The local machine needs `tmux` plus either `curl` or `wget`.
 
 For a remote host with SSH access:
 

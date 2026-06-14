@@ -2,6 +2,8 @@ package terminal
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"sync"
@@ -15,9 +17,11 @@ type Attachment struct {
 	cmd    *exec.Cmd
 	done   chan struct{}
 	writeM sync.Mutex
+	closeM sync.Mutex
+	closed bool
 }
 
-func Attach(ctx context.Context, socketPath string, session string, cols int, rows int, onOutput func([]byte)) (*Attachment, error) {
+func Attach(ctx context.Context, socketPath string, session string, cols int, rows int, onOutput func([]byte), onClose func(error)) (*Attachment, error) {
 	if cols <= 0 {
 		cols = 120
 	}
@@ -26,6 +30,7 @@ func Attach(ctx context.Context, socketPath string, session string, cols int, ro
 	}
 
 	cmd := exec.CommandContext(ctx, "tmux", "-S", socketPath, "attach-session", "-t", session)
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	file, err := pty.StartWithSize(cmd, &pty.Winsize{
 		Rows: uint16(rows),
 		Cols: uint16(cols),
@@ -40,6 +45,9 @@ func Attach(ctx context.Context, socketPath string, session string, cols int, ro
 		done: make(chan struct{}),
 	}
 	ready := make(chan struct{})
+	exited := make(chan error, 1)
+	var earlyOutput []byte
+	var earlyOutputM sync.Mutex
 	var readyOnce sync.Once
 	signalReady := func() {
 		readyOnce.Do(func() {
@@ -60,11 +68,23 @@ func Attach(ctx context.Context, socketPath string, session string, cols int, ro
 			if n > 0 {
 				chunk := make([]byte, n)
 				copy(chunk, buf[:n])
+				earlyOutputM.Lock()
+				if len(earlyOutput) < 4096 {
+					earlyOutput = append(earlyOutput, chunk...)
+					if len(earlyOutput) > 4096 {
+						earlyOutput = earlyOutput[:4096]
+					}
+				}
+				earlyOutputM.Unlock()
 				signalReady()
 				onOutput(chunk)
 			}
 			if err != nil {
-				_ = cmd.Wait()
+				waitErr := cmd.Wait()
+				exited <- waitErr
+				if !attachment.isClosed() && onClose != nil {
+					onClose(attachExitError(waitErr, earlyOutput))
+				}
 				return
 			}
 		}
@@ -72,6 +92,13 @@ func Attach(ctx context.Context, socketPath string, session string, cols int, ro
 
 	select {
 	case <-ready:
+		select {
+		case err := <-exited:
+			return nil, attachExitError(err, earlyOutput)
+		case <-time.After(50 * time.Millisecond):
+		}
+	case err := <-exited:
+		return nil, attachExitError(err, earlyOutput)
 	case <-ctx.Done():
 		_ = attachment.Close()
 		return nil, ctx.Err()
@@ -100,7 +127,32 @@ func (a *Attachment) Resize(cols int, rows int) error {
 }
 
 func (a *Attachment) Close() error {
+	a.closeM.Lock()
+	a.closed = true
+	a.closeM.Unlock()
+
 	err := a.file.Close()
 	<-a.done
 	return err
+}
+
+func (a *Attachment) isClosed() bool {
+	a.closeM.Lock()
+	defer a.closeM.Unlock()
+	return a.closed
+}
+
+func attachExitError(err error, output []byte) error {
+	message := string(output)
+	if message != "" {
+		return fmt.Errorf("%w: %s", errOrClosed(err), message)
+	}
+	return errOrClosed(err)
+}
+
+func errOrClosed(err error) error {
+	if err != nil {
+		return err
+	}
+	return errors.New("terminal attach closed")
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,6 +69,61 @@ test("local CLI transport surfaces structured agent validation errors", { timeou
   assert.match(result.stderr, /INVALID_WORKSPACE_NAME/);
 });
 
+test("local CLI transport bootstraps the release agent when repttyl is missing", { timeout: 30_000 }, (t) => {
+  if (skipWithoutTmux(t)) {
+    return;
+  }
+
+  const env = isolatedEnv();
+  t.after(() => cleanupEnv(env));
+
+  const releaseRoot = mkdtempSync(path.join(tmpdir(), "repttyl-local-release-"));
+  t.after(() => rmSync(releaseRoot, { recursive: true, force: true }));
+
+  const archive = path.join(releaseRoot, "repttyl.tar.gz");
+  const packageRoot = path.join(releaseRoot, "package");
+  mkdirSync(packageRoot);
+  copyFileSync(agentBinary, path.join(packageRoot, "repttyl"));
+  runTar("-C", packageRoot, "-czf", archive, "repttyl");
+
+  const fakeBin = path.join(releaseRoot, "bin");
+  mkdirSync(fakeBin);
+  writeFileSync(
+    path.join(fakeBin, "curl"),
+    `#!/bin/sh
+set -eu
+dest=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    dest="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+cp "${archive}" "$dest"
+`,
+  );
+  chmodSync(path.join(fakeBin, "curl"), 0o755);
+
+  const installDir = path.join(env.REPTTYL_E2E_ROOT, "install");
+  const result = runClient(
+    {
+      ...env,
+      PATH: `${fakeBin}:/usr/bin:/bin`,
+      REPTTYL_AGENT_INSTALL_DIR: installDir,
+    },
+    "--json",
+    "--local",
+    "--agent-binary",
+    "repttyl",
+    "hello",
+  );
+
+  assert.equal(JSON.parse(result.stdout).agent_version, "0.1.2-rc.3");
+  assert.equal(existsSync(path.join(installDir, "repttyl")), true);
+});
+
 test("docker CLI transport creates, lists, reads sessions, and kills a tmux workspace", { timeout: 420_000 }, (t) => {
   if (skipWithoutDocker(t)) {
     return;
@@ -122,6 +177,16 @@ function runDocker(...args) {
     cwd: repoRoot,
     encoding: "utf8",
     timeout: 300_000,
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout || result.error?.message);
+  return result;
+}
+
+function runTar(...args) {
+  const result = spawnSync("tar", args, {
+    cwd: repoRoot,
+    encoding: "utf8",
   });
 
   assert.equal(result.status, 0, result.stderr || result.stdout || result.error?.message);

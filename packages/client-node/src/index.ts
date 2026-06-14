@@ -14,7 +14,7 @@ import {
 type MessageListener = (message: InboundAgentMessage) => void;
 type CloseListener = (error?: Error) => void;
 
-const DEFAULT_AGENT_VERSION = "v0.1.2-rc.2";
+const DEFAULT_AGENT_VERSION = "v0.1.2-rc.3";
 const DEFAULT_RELEASE_REPOSITORY = "rifqi2320/repttyl";
 
 export type SSHHost = {
@@ -126,10 +126,16 @@ export function createAgentConnection(transport: AgentTransport): AgentProcessCo
 }
 
 export function createLocalAgentConnection(agentBinary = resolveDefaultAgentBinary()): AgentProcessConnection {
-  const child = spawn(agentBinary, ["agent", "--stdio"], {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: process.env,
-  });
+  const child =
+    agentBinary === "repttyl"
+      ? spawn("sh", ["-c", createLocalBootstrapScript()], {
+          stdio: ["pipe", "pipe", "pipe"],
+          env: process.env,
+        })
+      : spawn(agentBinary, ["agent", "--stdio"], {
+          stdio: ["pipe", "pipe", "pipe"],
+          env: process.env,
+        });
 
   return new AgentProcessConnection(child);
 }
@@ -245,20 +251,40 @@ function projectRoot(): string {
 }
 
 function createRemoteBootstrapCommand(options: RemoteAgentInstallOptions = {}): string {
+  return `sh -lc ${shellSingleQuote(createBootstrapScript("remote", options))}`;
+}
+
+function createLocalBootstrapScript(options: RemoteAgentInstallOptions = {}): string {
+  return createBootstrapScript("local", options);
+}
+
+function createBootstrapScript(target: "local" | "remote", options: RemoteAgentInstallOptions = {}): string {
   const version = shellSingleQuote(options.version || process.env["REPTTYL_AGENT_VERSION"] || DEFAULT_AGENT_VERSION);
   const repository = shellSingleQuote(
     options.repository || process.env["REPTTYL_RELEASE_REPOSITORY"] || DEFAULT_RELEASE_REPOSITORY,
   );
+  const targetLabel = target === "remote" ? "remote agent" : "local agent";
   const script = `
 set -eu
 
-if command -v repttyl >/dev/null 2>&1; then
-  exec repttyl agent --stdio
-fi
-
 install_dir="\${REPTTYL_AGENT_INSTALL_DIR:-$HOME/.local/bin}"
 agent="$install_dir/repttyl"
-if [ -x "$agent" ]; then
+tag=${version}
+agent_version="\${tag#v}"
+
+agent_matches_version() {
+  candidate="$1"
+  "$candidate" version --json 2>/dev/null | grep -q '"agent_version"[[:space:]]*:[[:space:]]*"'"$agent_version"'"'
+}
+
+if command -v repttyl >/dev/null 2>&1; then
+  existing_agent="$(command -v repttyl)"
+  if agent_matches_version "$existing_agent"; then
+    exec "$existing_agent" agent --stdio
+  fi
+fi
+
+if [ -x "$agent" ] && agent_matches_version "$agent"; then
   exec "$agent" agent --stdio
 fi
 
@@ -282,7 +308,6 @@ case "$arch" in
     ;;
 esac
 
-tag=${version}
 repository=${repository}
 url="https://github.com/$repository/releases/download/$tag/repttyl-$tag-$os-$arch.tar.gz"
 tmp_dir="\${TMPDIR:-/tmp}/repttyl-install-$$"
@@ -294,7 +319,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$install_dir" "$tmp_dir"
-echo "repttyl: installing remote agent from $url" >&2
+echo "repttyl: installing ${targetLabel} from $url" >&2
 
 if command -v curl >/dev/null 2>&1; then
   curl -fsSL "$url" -o "$archive"
@@ -311,7 +336,7 @@ mv "$tmp_dir/repttyl" "$agent"
 exec "$agent" agent --stdio
 `.trim();
 
-  return `sh -lc ${shellSingleQuote(script)}`;
+  return script;
 }
 
 function shellSingleQuote(value: string): string {

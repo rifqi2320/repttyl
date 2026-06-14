@@ -207,6 +207,12 @@ func (s *Server) handleTerminalAttach(ctx context.Context, request protocol.Requ
 		func(output []byte) {
 			_ = s.sendStream(streamID, "output", string(output))
 		},
+		func(err error) {
+			s.forgetStream(streamID)
+			if err != nil {
+				_ = s.sendStreamError(streamID, "TERMINAL_CLOSED", err.Error())
+			}
+		},
 	)
 	if err != nil {
 		_ = s.sendError(request.ID, "ATTACH_FAILED", err.Error())
@@ -247,6 +253,7 @@ func (s *Server) handleTerminalInput(request protocol.Request) {
 		return
 	}
 	if err := stream.attachment.Write(request.Data); err != nil {
+		s.removeStream(request.Stream)
 		_ = s.sendStreamError(request.Stream, "WRITE_FAILED", err.Error())
 	}
 }
@@ -258,6 +265,7 @@ func (s *Server) handleTerminalResize(request protocol.Request) {
 		return
 	}
 	if err := stream.attachment.Resize(request.Cols, request.Rows); err != nil {
+		s.removeStream(request.Stream)
 		_ = s.sendStreamError(request.Stream, "RESIZE_FAILED", err.Error())
 	}
 }
@@ -329,6 +337,25 @@ func (s *Server) getStream(streamID string) (activeStream, bool) {
 
 	stream, ok := s.streams[streamID]
 	return stream, ok
+}
+
+func (s *Server) removeStream(streamID string) {
+	s.streamMu.Lock()
+	stream, ok := s.streams[streamID]
+	if ok {
+		delete(s.streams, streamID)
+	}
+	s.streamMu.Unlock()
+
+	if ok {
+		_ = stream.attachment.Close()
+	}
+}
+
+func (s *Server) forgetStream(streamID string) {
+	s.streamMu.Lock()
+	delete(s.streams, streamID)
+	s.streamMu.Unlock()
 }
 
 func (s *Server) closeWorkspaceStreams(workspaceID string) {
