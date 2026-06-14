@@ -41,6 +41,15 @@ const config = {
   ],
   plugins: [
     new WebpackPlugin({
+      devServer: {
+        client: {
+          overlay: {
+            errors: true,
+            warnings: false,
+            runtimeErrors: (error: Error) => error.message !== "ResizeObserver loop completed with undelivered notifications.",
+          },
+        },
+      },
       mainConfig: "./webpack.main.config.js",
       renderer: {
         config: "./webpack.renderer.config.js",

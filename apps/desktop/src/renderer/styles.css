@@ -34,6 +34,18 @@ button:hover:not(:disabled) {
   background: #ffffff;
 }
 
+button.secondary:hover:not(:disabled),
+button.icon:hover:not(:disabled),
+.nav-button:hover:not(:disabled),
+.row-button:hover:not(:disabled) {
+  background: #20252c;
+  color: #e5e8ec;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #3a2020;
+}
+
 button:disabled {
   cursor: default;
   opacity: 0.45;
@@ -209,6 +221,12 @@ label,
   background: #172235;
 }
 
+.nav-button.selected:hover:not(:disabled),
+.row-button.selected:hover:not(:disabled) {
+  border-color: #a9c8ff;
+  background: #1b2a42;
+}
+
 .workspace {
   min-width: 0;
   min-height: 0;
@@ -242,6 +260,10 @@ label,
   min-height: 0;
   display: grid;
   grid-template-rows: 220px minmax(0, 1fr);
+}
+
+.workspace-view[hidden] {
+  display: none;
 }
 
 .update-banner {
@@ -331,6 +353,13 @@ label,
   font-size: 13px;
 }
 
+.settings-save {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 140px;
+}
+
 .settings-grid {
   display: grid;
   gap: 18px;
@@ -391,6 +420,38 @@ label,
 
 .settings-status {
   font-size: 13px;
+}
+
+.modal {
+  width: min(420px, calc(100vw - 48px));
+  border: 1px solid #343a42;
+  background: #15191f;
+  color: #e5e8ec;
+  padding: 18px;
+}
+
+.modal::backdrop {
+  background: rgb(0 0 0 / 0.58);
+}
+
+.modal form {
+  display: grid;
+  gap: 16px;
+}
+
+.modal h2 {
+  color: #e5e8ec;
+  font-size: 16px;
+}
+
+.modal .field-row {
+  grid-template-columns: 84px minmax(0, 1fr);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .xterm {

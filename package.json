@@ -1,6 +1,6 @@
 {
   "name": "repttyl",
-  "version": "0.1.2-rc.1",
+  "version": "0.1.2-rc.2",
   "license": "MIT",
   "private": true,
   "packageManager": "pnpm@10.16.1",
@@ -17,7 +17,9 @@
     "agent:build": "nx build agent",
     "agent:test": "nx test agent",
     "cli:build": "nx build cli",
-    "desktop:start": "nx start desktop"
+    "desktop:start": "nx start desktop",
+    "desktop:start-vnc": "pnpm --filter @repttyl/desktop start:vnc",
+    "desktop:start-vnc-devtools": "pnpm --filter @repttyl/desktop start:vnc:devtools"
   },
   "devDependencies": {
     "@nx/js": "^22.0.0",

@@ -34,6 +34,7 @@ const state: AppState = {
   busy: false,
   updateChecking: false,
 };
+let renderedSettingsKey = "";
 
 const app = document.getElementById("app");
 if (!app) {
@@ -115,7 +116,10 @@ app.innerHTML = `
             <h2>Settings</h2>
             <p>Application behavior, update checks, and remote agent bootstrap.</p>
           </div>
-          <button id="saveSettings" title="Save settings">Save</button>
+          <div class="settings-save">
+            <button id="saveSettings" title="Save settings">Save</button>
+            <div id="settingsSaveStatus" class="settings-status"></div>
+          </div>
         </div>
 
         <div class="settings-grid">
@@ -134,7 +138,7 @@ app.innerHTML = `
             <label class="setting-row">
               <span>
                 <strong>Include release candidates</strong>
-                <small>Consider prereleases such as <code>v0.1.2-rc.1</code>.</small>
+                <small>Consider prereleases such as <code>v0.1.2-rc.2</code>.</small>
               </span>
               <input id="settingIncludePrereleases" type="checkbox" />
             </label>
@@ -173,6 +177,20 @@ app.innerHTML = `
       </section>
     </main>
   </section>
+
+  <dialog id="workspaceNameDialog" class="modal">
+    <form id="workspaceNameForm" method="dialog">
+      <h2>New workspace</h2>
+      <label class="field-row" for="workspaceNameInput">
+        <span>Name</span>
+        <input id="workspaceNameInput" type="text" autocomplete="off" />
+      </label>
+      <div class="modal-actions">
+        <button id="workspaceNameCancel" type="button" class="secondary">Cancel</button>
+        <button id="workspaceNameCreate" type="submit">Create</button>
+      </div>
+    </form>
+  </dialog>
 `;
 
 const terminalElement = document.getElementById("terminal");
@@ -246,6 +264,9 @@ function bindUI(): void {
 
 async function boot(): Promise<void> {
   await Promise.all([loadSettings(), loadHosts(), loadConnectionState()]);
+  if (state.connection.connected) {
+    await loadWorkspaces();
+  }
   render();
   if (state.settings?.updates.checkOnStartup) {
     void runUpdateCheck();
@@ -301,7 +322,7 @@ async function createWorkspace(): Promise<void> {
   if (!state.connection.connected) {
     return;
   }
-  const name = window.prompt("Workspace name");
+  const name = await requestWorkspaceName();
   if (!name?.trim()) {
     return;
   }
@@ -310,6 +331,41 @@ async function createWorkspace(): Promise<void> {
     state.workspaces = await window.repttyl.listWorkspaces();
     state.selectedWorkspace = state.workspaces.find((item) => item.id === workspace.id) ?? workspace;
     await loadSessions();
+  });
+}
+
+function requestWorkspaceName(): Promise<string | undefined> {
+  const dialog = byID("workspaceNameDialog");
+  const input = byID("workspaceNameInput");
+  const form = byID("workspaceNameForm");
+  const cancel = byID("workspaceNameCancel");
+
+  if (!(dialog instanceof HTMLDialogElement) || !(input instanceof HTMLInputElement) || !(form instanceof HTMLFormElement)) {
+    return Promise.resolve(undefined);
+  }
+
+  input.value = "";
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      dialog.removeEventListener("close", handleClose);
+      form.removeEventListener("submit", handleSubmit);
+      cancel.removeEventListener("click", handleCancel);
+    };
+    const handleClose = () => {
+      cleanup();
+      resolve(dialog.returnValue === "create" ? input.value.trim() : undefined);
+    };
+    const handleSubmit = (event: SubmitEvent) => {
+      event.preventDefault();
+      dialog.close("create");
+    };
+    const handleCancel = () => dialog.close("cancel");
+
+    form.addEventListener("submit", handleSubmit);
+    cancel.addEventListener("click", handleCancel);
+    dialog.addEventListener("close", handleClose);
+    dialog.showModal();
+    input.focus();
   });
 }
 
@@ -366,6 +422,7 @@ function render(): void {
 
 function setActiveView(view: AppState["activeView"]): void {
   state.activeView = view;
+  state.message = undefined;
   render();
   if (view === "workspace") {
     resizeTerminal();
@@ -454,14 +511,20 @@ function renderSettings(): void {
     return;
   }
 
-  setCheckbox("settingCheckOnStartup", settings.updates.checkOnStartup);
-  setCheckbox("settingIncludePrereleases", settings.updates.includePrereleases);
-  setInput("settingUpdateRepository", settings.updates.repository);
-  setCheckbox("settingRemoteAutoInstall", settings.remoteAgent.autoInstall);
-  setInput("settingRemoteRepository", settings.remoteAgent.repository);
-  setInput("settingRemoteVersion", settings.remoteAgent.version);
+  const nextSettingsKey = JSON.stringify(settings);
+  if (nextSettingsKey !== renderedSettingsKey) {
+    setCheckbox("settingCheckOnStartup", settings.updates.checkOnStartup);
+    setCheckbox("settingIncludePrereleases", settings.updates.includePrereleases);
+    setInput("settingUpdateRepository", settings.updates.repository);
+    setCheckbox("settingRemoteAutoInstall", settings.remoteAgent.autoInstall);
+    setInput("settingRemoteRepository", settings.remoteAgent.repository);
+    setInput("settingRemoteVersion", settings.remoteAgent.version);
+    renderedSettingsKey = nextSettingsKey;
+  }
+
   byID("checkUpdatesNow").toggleAttribute("disabled", state.updateChecking);
   byID("saveSettings").toggleAttribute("disabled", state.busy);
+  byID("settingsSaveStatus").textContent = state.message ?? "";
 
   const status = byID("updateStatus");
   if (state.updateChecking) {
@@ -532,7 +595,7 @@ function readSettingsForm(): Partial<AppSettings> {
     remoteAgent: {
       autoInstall: checkboxValue("settingRemoteAutoInstall"),
       repository: inputValue("settingRemoteRepository") || "rifqi2320/repttyl",
-      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.1",
+      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.2",
     },
   };
 }

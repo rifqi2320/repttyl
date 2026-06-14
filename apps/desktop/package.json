@@ -1,12 +1,14 @@
 {
   "name": "@repttyl/desktop",
-  "version": "0.1.2-rc.1",
+  "version": "0.1.2-rc.2",
   "productName": "Repttyl",
   "license": "MIT",
   "private": true,
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",
+    "start:vnc": "DISPLAY=${DISPLAY:-:99} ELECTRON_DISABLE_SANDBOX=1 REPTTYL_VNC=1 electron-forge start",
+    "start:vnc:devtools": "DISPLAY=${DISPLAY:-:99} ELECTRON_DISABLE_SANDBOX=1 REPTTYL_VNC=1 REPTTYL_OPEN_DEVTOOLS=1 electron-forge start",
     "typecheck": "pnpm --filter @repttyl/client-node build && tsc -p tsconfig.json --noEmit",
     "package": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\" && pnpm --filter @repttyl/client-node build && electron-forge package",
     "make": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\" && pnpm --filter @repttyl/client-node build && electron-forge make"

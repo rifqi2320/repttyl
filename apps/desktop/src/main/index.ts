@@ -81,7 +81,7 @@ const defaultSettings: AppSettings = {
   remoteAgent: {
     autoInstall: true,
     repository: "rifqi2320/repttyl",
-    version: "v0.1.2-rc.1",
+    version: "v0.1.2-rc.2",
   },
 };
 
@@ -95,12 +95,35 @@ if (started) {
   app.quit();
 }
 
+if (process.env.REPTTYL_DISABLE_GPU === "1") {
+  app.disableHardwareAcceleration();
+  for (const electronSwitch of [
+    "disable-gpu",
+    "disable-gpu-compositing",
+    "disable-gpu-rasterization",
+    "disable-accelerated-2d-canvas",
+    "disable-vulkan",
+  ]) {
+    app.commandLine.appendSwitch(electronSwitch);
+  }
+  app.commandLine.appendSwitch("disable-features", "VaapiVideoDecoder,CanvasOopRasterization,Vulkan,VizDisplayCompositor");
+}
+
+if (process.env.REPTTYL_VNC === "1") {
+  app.commandLine.appendSwitch("disable-dev-shm-usage");
+  app.commandLine.appendSwitch("ignore-gpu-blocklist");
+  app.commandLine.appendSwitch("ozone-platform", "x11");
+  app.commandLine.appendSwitch("disable-gpu-compositing");
+  app.commandLine.appendSwitch("disable-features", "VaapiVideoDecoder,CanvasOopRasterization,Vulkan");
+}
+
 const createWindow = () => {
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 980,
     minHeight: 620,
+    backgroundColor: "#101317",
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
@@ -115,8 +138,52 @@ const createWindow = () => {
       mainWindow = undefined;
     }
   });
+  window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`renderer failed to load ${validatedURL}: ${errorCode} ${errorDescription}`);
+  });
+  window.webContents.on("render-process-gone", (_event, details) => {
+    console.error(`renderer process gone: ${details.reason} (${details.exitCode})`);
+  });
+  if (process.env.REPTTYL_DEBUG_RENDERER === "1") {
+    window.webContents.on("console-message", (_event, level, message, line, sourceID) => {
+      console.log(`renderer console[${level}] ${sourceID}:${line}: ${message}`);
+    });
+  }
+  window.webContents.on("did-finish-load", () => {
+    if (process.env.REPTTYL_DEBUG_RENDERER === "1") {
+      void window.webContents
+        .executeJavaScript(
+          `JSON.stringify({
+            title: document.title,
+            bodyText: document.body.innerText.slice(0, 300),
+            bodyHTML: document.body.innerHTML.slice(0, 500),
+            bodyBackground: getComputedStyle(document.body).backgroundColor,
+            appBackground: getComputedStyle(document.getElementById("app") ?? document.body).backgroundColor
+          })`,
+        )
+        .then((snapshot) => console.log(`renderer snapshot ${snapshot}`))
+        .catch((error: unknown) => console.error("renderer snapshot failed", error));
+    }
+    if (process.env.REPTTYL_CAPTURE_PAGE === "1") {
+      void window.webContents
+        .capturePage()
+        .then((image) => {
+          const capturePath = "/tmp/repttyl-electron-capture.png";
+          writeFileSync(capturePath, image.toPNG());
+          console.log(`renderer capture ${capturePath}`);
+        })
+        .catch((error: unknown) => console.error("renderer capture failed", error));
+    }
+  });
 
   void window.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+  if (process.env.REPTTYL_OPEN_DEVTOOLS === "1") {
+    window.webContents.once("did-finish-load", () => {
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.openDevTools({ mode: "detach" });
+      }
+    });
+  }
 };
 
 void app.whenReady().then(() => {
@@ -163,7 +230,7 @@ function registerIPC(): void {
     bindTerminalEvents(nextClient);
 
     try {
-      const hello = await nextClient.hello("0.1.2-rc.1");
+      const hello = await nextClient.hello("0.1.2-rc.2");
       state = {
         connected: true,
         mode: request.mode,

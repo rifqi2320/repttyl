@@ -36,17 +36,17 @@ https://github.com/rifqi2320/repttyl/releases
 Agent archives are named by platform:
 
 ```text
-repttyl-v0.1.2-rc.1-linux-amd64.tar.gz
-repttyl-v0.1.2-rc.1-linux-arm64.tar.gz
-repttyl-v0.1.2-rc.1-darwin-amd64.tar.gz
-repttyl-v0.1.2-rc.1-darwin-arm64.tar.gz
-repttyl-v0.1.2-rc.1-windows-amd64.tar.gz
+repttyl-v0.1.2-rc.2-linux-amd64.tar.gz
+repttyl-v0.1.2-rc.2-linux-arm64.tar.gz
+repttyl-v0.1.2-rc.2-darwin-amd64.tar.gz
+repttyl-v0.1.2-rc.2-darwin-arm64.tar.gz
+repttyl-v0.1.2-rc.2-windows-amd64.tar.gz
 ```
 
 The CLI archive is platform-independent and requires Node.js:
 
 ```text
-repttyl-client-v0.1.2-rc.1.tar.gz
+repttyl-client-v0.1.2-rc.2.tar.gz
 ```
 
 ## Build From Source
