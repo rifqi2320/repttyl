@@ -15,6 +15,35 @@ type ConnectionState = {
   error?: string;
 };
 
+type AppSettings = {
+  updates: {
+    checkOnStartup: boolean;
+    includePrereleases: boolean;
+    repository: string;
+  };
+  remoteAgent: {
+    autoInstall: boolean;
+    repository: string;
+    version: string;
+  };
+};
+
+type UpdateCheckResult = {
+  checkedAt: string;
+  currentVersion: string;
+  repository: string;
+  includePrereleases: boolean;
+  updateAvailable: boolean;
+  latest?: {
+    version: string;
+    name: string;
+    url: string;
+    prerelease: boolean;
+    publishedAt: string;
+  };
+  error?: string;
+};
+
 type TerminalAttachRequest = {
   workspaceID: string;
   session: string;
@@ -24,6 +53,10 @@ type TerminalAttachRequest = {
 
 const api = {
   listHosts: (): Promise<SSHHost[]> => ipcRenderer.invoke("repttyl:hosts:list"),
+  getSettings: (): Promise<AppSettings> => ipcRenderer.invoke("repttyl:settings:get"),
+  updateSettings: (patch: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke("repttyl:settings:update", patch),
+  checkForUpdates: (): Promise<UpdateCheckResult> => ipcRenderer.invoke("repttyl:updates:check"),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke("repttyl:external:open", url),
   getConnectionState: (): Promise<ConnectionState> => ipcRenderer.invoke("repttyl:connection:state"),
   connect: (request: ConnectRequest): Promise<ConnectionState> => ipcRenderer.invoke("repttyl:connection:connect", request),
   disconnect: (): Promise<ConnectionState> => ipcRenderer.invoke("repttyl:connection:disconnect"),

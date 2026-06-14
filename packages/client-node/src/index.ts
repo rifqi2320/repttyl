@@ -32,6 +32,12 @@ export type SSHAgentTransport = {
   mode: "ssh";
   host: string;
   remoteCommand?: string;
+  remoteInstall?: RemoteAgentInstallOptions | false;
+};
+
+export type RemoteAgentInstallOptions = {
+  repository?: string;
+  version?: string;
 };
 
 export type DockerAgentTransport = {
@@ -116,7 +122,7 @@ export function createAgentConnection(transport: AgentTransport): AgentProcessCo
     return createDockerAgentConnection(transport.container, transport.remoteCommand);
   }
 
-  return createSSHAgentConnection(transport.host, transport.remoteCommand);
+  return createSSHAgentConnection(transport.host, transport.remoteCommand, transport.remoteInstall);
 }
 
 export function createLocalAgentConnection(agentBinary = resolveDefaultAgentBinary()): AgentProcessConnection {
@@ -132,8 +138,16 @@ export function createAgentProcessConnection(agentBinary = resolveDefaultAgentBi
   return createLocalAgentConnection(agentBinary);
 }
 
-export function createSSHAgentConnection(host: string, remoteCommand?: string): AgentProcessConnection {
-  const command = remoteCommand ? `${remoteCommand} agent --stdio` : createRemoteBootstrapCommand();
+export function createSSHAgentConnection(
+  host: string,
+  remoteCommand?: string,
+  remoteInstall?: RemoteAgentInstallOptions | false,
+): AgentProcessConnection {
+  const command = remoteCommand
+    ? `${remoteCommand} agent --stdio`
+    : remoteInstall === false
+      ? "repttyl agent --stdio"
+      : createRemoteBootstrapCommand(remoteInstall);
   const child = spawn("ssh", ["-T", host, command], {
     stdio: ["pipe", "pipe", "pipe"],
     env: process.env,
@@ -230,9 +244,11 @@ function projectRoot(): string {
   return path.resolve(path.dirname(thisFile), "..", "..", "..");
 }
 
-function createRemoteBootstrapCommand(): string {
-  const version = shellSingleQuote(process.env["REPTTYL_AGENT_VERSION"] || DEFAULT_AGENT_VERSION);
-  const repository = shellSingleQuote(process.env["REPTTYL_RELEASE_REPOSITORY"] || DEFAULT_RELEASE_REPOSITORY);
+function createRemoteBootstrapCommand(options: RemoteAgentInstallOptions = {}): string {
+  const version = shellSingleQuote(options.version || process.env["REPTTYL_AGENT_VERSION"] || DEFAULT_AGENT_VERSION);
+  const repository = shellSingleQuote(
+    options.repository || process.env["REPTTYL_RELEASE_REPOSITORY"] || DEFAULT_RELEASE_REPOSITORY,
+  );
   const script = `
 set -eu
 

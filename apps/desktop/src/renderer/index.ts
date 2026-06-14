@@ -5,10 +5,15 @@ import "./styles.css";
 
 type SSHHost = Awaited<ReturnType<typeof window.repttyl.listHosts>>[number];
 type ConnectionState = Awaited<ReturnType<typeof window.repttyl.getConnectionState>>;
+type AppSettings = Awaited<ReturnType<typeof window.repttyl.getSettings>>;
+type UpdateCheckResult = Awaited<ReturnType<typeof window.repttyl.checkForUpdates>>;
 
 type AppState = {
+  activeView: "workspace" | "settings";
   hosts: SSHHost[];
   connection: ConnectionState;
+  settings?: AppSettings;
+  updateCheck?: UpdateCheckResult;
   workspaces: Workspace[];
   sessions: Session[];
   selectedHost?: string;
@@ -16,15 +21,18 @@ type AppState = {
   selectedSession?: Session;
   stream?: string;
   busy: boolean;
+  updateChecking: boolean;
   message?: string;
 };
 
 const state: AppState = {
+  activeView: "workspace",
   hosts: [],
   connection: { connected: false },
   workspaces: [],
   sessions: [],
   busy: false,
+  updateChecking: false,
 };
 
 const app = document.getElementById("app");
@@ -42,6 +50,10 @@ app.innerHTML = `
           <p>Remote shells</p>
         </div>
       </div>
+      <nav class="view-nav" aria-label="Primary">
+        <button id="showWorkspace" class="nav-button selected" title="Workspace">Workspace</button>
+        <button id="showSettings" class="nav-button" title="Settings">Settings</button>
+      </nav>
       <div class="host-panel">
         <label for="manualHost">Host</label>
         <div class="manual-host">
@@ -69,28 +81,95 @@ app.innerHTML = `
         </div>
       </header>
 
-      <section class="browser">
-        <div class="column">
-          <div class="column-head">
-            <h2>Workspaces</h2>
-            <button id="createWorkspace" class="icon" title="New workspace">+</button>
+      <div id="updateBanner" class="update-banner" hidden></div>
+
+      <section id="workspaceView" class="workspace-view">
+        <section class="browser">
+          <div class="column">
+            <div class="column-head">
+              <h2>Workspaces</h2>
+              <button id="createWorkspace" class="icon" title="New workspace">+</button>
+            </div>
+            <div id="workspaces" class="rows"></div>
           </div>
-          <div id="workspaces" class="rows"></div>
-        </div>
-        <div class="column">
-          <div class="column-head">
-            <h2>Sessions</h2>
+          <div class="column">
+            <div class="column-head">
+              <h2>Sessions</h2>
+            </div>
+            <div id="sessions" class="rows"></div>
           </div>
-          <div id="sessions" class="rows"></div>
-        </div>
+        </section>
+
+        <section class="terminal-wrap">
+          <div class="terminal-head">
+            <div id="terminalTitle">Terminal</div>
+            <div id="terminalMeta">No session attached</div>
+          </div>
+          <div id="terminal"></div>
+        </section>
       </section>
 
-      <section class="terminal-wrap">
-        <div class="terminal-head">
-          <div id="terminalTitle">Terminal</div>
-          <div id="terminalMeta">No session attached</div>
+      <section id="settingsView" class="settings-view" hidden>
+        <div class="settings-header">
+          <div>
+            <h2>Settings</h2>
+            <p>Application behavior, update checks, and remote agent bootstrap.</p>
+          </div>
+          <button id="saveSettings" title="Save settings">Save</button>
         </div>
-        <div id="terminal"></div>
+
+        <div class="settings-grid">
+          <section class="settings-section">
+            <div>
+              <h3>Update Checks</h3>
+              <p>Check GitHub releases and surface available desktop updates when the app opens.</p>
+            </div>
+            <label class="setting-row">
+              <span>
+                <strong>Check on startup</strong>
+                <small>Run once when the desktop app opens.</small>
+              </span>
+              <input id="settingCheckOnStartup" type="checkbox" />
+            </label>
+            <label class="setting-row">
+              <span>
+                <strong>Include release candidates</strong>
+                <small>Consider prereleases such as <code>v0.1.2-rc.1</code>.</small>
+              </span>
+              <input id="settingIncludePrereleases" type="checkbox" />
+            </label>
+            <label class="field-row" for="settingUpdateRepository">
+              <span>GitHub repository</span>
+              <input id="settingUpdateRepository" type="text" spellcheck="false" />
+            </label>
+            <div class="settings-actions">
+              <button id="checkUpdatesNow" class="secondary" title="Check updates now">Check now</button>
+              <div id="updateStatus" class="settings-status"></div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <div>
+              <h3>Remote Agent Bootstrap</h3>
+              <p>Control how SSH hosts get the Go agent when <code>repttyl</code> is not already installed.</p>
+            </div>
+            <label class="setting-row">
+              <span>
+                <strong>Auto-install remote agent</strong>
+                <small>Download the release archive into <code>~/.local/bin/repttyl</code> over SSH.</small>
+              </span>
+              <input id="settingRemoteAutoInstall" type="checkbox" />
+            </label>
+            <label class="field-row" for="settingRemoteRepository">
+              <span>Agent release repository</span>
+              <input id="settingRemoteRepository" type="text" spellcheck="false" />
+            </label>
+            <label class="field-row" for="settingRemoteVersion">
+              <span>Agent release tag</span>
+              <input id="settingRemoteVersion" type="text" spellcheck="false" />
+            </label>
+          </section>
+        </div>
       </section>
     </main>
   </section>
@@ -148,6 +227,8 @@ bindUI();
 void boot();
 
 function bindUI(): void {
+  byID("showWorkspace").addEventListener("click", () => setActiveView("workspace"));
+  byID("showSettings").addEventListener("click", () => setActiveView("settings"));
   byID("refreshHosts").addEventListener("click", () => void loadHosts());
   byID("connectManual").addEventListener("click", () => {
     const host = inputValue("manualHost");
@@ -159,11 +240,20 @@ function bindUI(): void {
   byID("disconnect").addEventListener("click", () => void disconnect());
   byID("refreshWorkspaces").addEventListener("click", () => void loadWorkspaces());
   byID("createWorkspace").addEventListener("click", () => void createWorkspace());
+  byID("saveSettings").addEventListener("click", () => void saveSettings());
+  byID("checkUpdatesNow").addEventListener("click", () => void runUpdateCheck());
 }
 
 async function boot(): Promise<void> {
-  await Promise.all([loadHosts(), loadConnectionState()]);
+  await Promise.all([loadSettings(), loadHosts(), loadConnectionState()]);
   render();
+  if (state.settings?.updates.checkOnStartup) {
+    void runUpdateCheck();
+  }
+}
+
+async function loadSettings(): Promise<void> {
+  state.settings = await window.repttyl.getSettings();
 }
 
 async function loadConnectionState(): Promise<void> {
@@ -265,10 +355,28 @@ async function attachSession(session: Session): Promise<void> {
 }
 
 function render(): void {
+  renderView();
   renderConnection();
+  renderUpdateBanner();
   renderHosts();
   renderWorkspaces();
   renderSessions();
+  renderSettings();
+}
+
+function setActiveView(view: AppState["activeView"]): void {
+  state.activeView = view;
+  render();
+  if (view === "workspace") {
+    resizeTerminal();
+  }
+}
+
+function renderView(): void {
+  byID("workspaceView").hidden = state.activeView !== "workspace";
+  byID("settingsView").hidden = state.activeView !== "settings";
+  byID("showWorkspace").classList.toggle("selected", state.activeView === "workspace");
+  byID("showSettings").classList.toggle("selected", state.activeView === "settings");
 }
 
 function renderConnection(): void {
@@ -340,6 +448,95 @@ function renderSessions(): void {
   byID("terminalMeta").textContent = state.stream ? "Attached" : "No session attached";
 }
 
+function renderSettings(): void {
+  const settings = state.settings;
+  if (!settings) {
+    return;
+  }
+
+  setCheckbox("settingCheckOnStartup", settings.updates.checkOnStartup);
+  setCheckbox("settingIncludePrereleases", settings.updates.includePrereleases);
+  setInput("settingUpdateRepository", settings.updates.repository);
+  setCheckbox("settingRemoteAutoInstall", settings.remoteAgent.autoInstall);
+  setInput("settingRemoteRepository", settings.remoteAgent.repository);
+  setInput("settingRemoteVersion", settings.remoteAgent.version);
+  byID("checkUpdatesNow").toggleAttribute("disabled", state.updateChecking);
+  byID("saveSettings").toggleAttribute("disabled", state.busy);
+
+  const status = byID("updateStatus");
+  if (state.updateChecking) {
+    status.textContent = "Checking GitHub releases...";
+  } else if (state.updateCheck?.error) {
+    status.textContent = state.updateCheck.error;
+  } else if (state.updateCheck?.latest) {
+    status.textContent = state.updateCheck.updateAvailable
+      ? `${state.updateCheck.latest.version} is available.`
+      : `Up to date at ${state.updateCheck.currentVersion}.`;
+  } else {
+    status.textContent = "No check has run yet.";
+  }
+}
+
+function renderUpdateBanner(): void {
+  const banner = byID("updateBanner");
+  const result = state.updateCheck;
+  if (!result?.updateAvailable || !result.latest) {
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+
+  banner.hidden = false;
+  banner.innerHTML = `
+    <div>
+      <strong>${escapeHTML(result.latest.version)} available${result.latest.prerelease ? " (RC)" : ""}</strong>
+      <span>${escapeHTML(result.latest.name || result.latest.version)}</span>
+    </div>
+    <button id="openRelease" class="secondary" title="Open release">Open release</button>
+  `;
+  byID("openRelease").addEventListener("click", () => {
+    if (result.latest?.url) {
+      void window.repttyl.openExternal(result.latest.url);
+    }
+  });
+}
+
+async function saveSettings(): Promise<void> {
+  await withBusy(async () => {
+    state.settings = await window.repttyl.updateSettings(readSettingsForm());
+    state.message = "Settings saved.";
+  });
+}
+
+async function runUpdateCheck(): Promise<void> {
+  if (state.settings) {
+    state.settings = await window.repttyl.updateSettings(readSettingsForm());
+  }
+  state.updateChecking = true;
+  render();
+  try {
+    state.updateCheck = await window.repttyl.checkForUpdates();
+  } finally {
+    state.updateChecking = false;
+    render();
+  }
+}
+
+function readSettingsForm(): Partial<AppSettings> {
+  return {
+    updates: {
+      checkOnStartup: checkboxValue("settingCheckOnStartup"),
+      includePrereleases: checkboxValue("settingIncludePrereleases"),
+      repository: inputValue("settingUpdateRepository") || "rifqi2320/repttyl",
+    },
+    remoteAgent: {
+      autoInstall: checkboxValue("settingRemoteAutoInstall"),
+      repository: inputValue("settingRemoteRepository") || "rifqi2320/repttyl",
+      version: inputValue("settingRemoteVersion") || "v0.1.1",
+    },
+  };
+}
+
 async function withBusy(task: () => Promise<void>): Promise<void> {
   state.busy = true;
   render();
@@ -381,6 +578,25 @@ function byID(id: string): HTMLElement {
 function inputValue(id: string): string {
   const element = byID(id);
   return element instanceof HTMLInputElement ? element.value.trim() : "";
+}
+
+function checkboxValue(id: string): boolean {
+  const element = byID(id);
+  return element instanceof HTMLInputElement ? element.checked : false;
+}
+
+function setInput(id: string, value: string): void {
+  const element = byID(id);
+  if (element instanceof HTMLInputElement && element.value !== value) {
+    element.value = value;
+  }
+}
+
+function setCheckbox(id: string, value: boolean): void {
+  const element = byID(id);
+  if (element instanceof HTMLInputElement) {
+    element.checked = value;
+  }
 }
 
 function escapeHTML(value: string): string {
