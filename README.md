@@ -1,0 +1,140 @@
+# Repttyl
+
+Repttyl is a desktop-first remote shell workspace system built around OpenSSH, a small remote agent, and persistent tmux-backed terminal sessions.
+
+The current release focuses on the remote agent and CLI. The desktop app is scaffolded in the repo but is not part of the first release artifacts yet.
+
+## What It Does
+
+- Uses OpenSSH as the transport boundary.
+- Runs a remote `repttyl agent --stdio` process under the SSH user.
+- Keeps shell state alive through tmux after client disconnects.
+- Stores named workspaces under the remote user's home directory.
+- Provides a CLI client for listing, creating, attaching to, and killing workspace sessions.
+- Emits daemon-backed workspace status events from tmux hooks without polling.
+
+## Repository Layout
+
+```text
+agent/                     Go remote agent and repttyl CLI binary
+apps/cli/                  Node CLI client
+apps/desktop/              Electron desktop scaffold
+packages/protocol-client/  Shared TypeScript protocol client
+packages/protocol-schema/  JSON schema and protocol notes
+docs/release.md            Release process
+```
+
+## Install From Release
+
+Download artifacts from:
+
+```text
+https://github.com/rifqi2320/repttyl/releases
+```
+
+Agent archives are named by platform:
+
+```text
+repttyl-v0.1.0-linux-amd64.tar.gz
+repttyl-v0.1.0-linux-arm64.tar.gz
+repttyl-v0.1.0-darwin-amd64.tar.gz
+repttyl-v0.1.0-darwin-arm64.tar.gz
+repttyl-v0.1.0-windows-amd64.tar.gz
+```
+
+The CLI archive is platform-independent and requires Node.js:
+
+```text
+repttyl-client-v0.1.0.tar.gz
+```
+
+## Build From Source
+
+Requirements:
+
+- Go 1.24+
+- Node.js 24+
+- pnpm 10+
+- tmux on hosts that run the agent
+
+Install dependencies:
+
+```bash
+pnpm install
+```
+
+Build and test the agent:
+
+```bash
+cd agent
+go test ./...
+go build -o bin/repttyl ./cmd/repttyl
+```
+
+Build the CLI:
+
+```bash
+pnpm --filter @repttyl/cli build
+```
+
+Run the full release preflight:
+
+```bash
+pnpm release:preflight
+```
+
+## Agent Commands
+
+```bash
+repttyl agent --stdio
+repttyl version --json
+repttyl doctor --json
+repttyl probe --json
+repttyl workspace list --json
+repttyl daemon start
+repttyl daemon stop
+repttyl daemon status --json
+```
+
+The agent stores state under:
+
+```text
+~/.local/share/repttyl/state
+~/.cache/repttyl/run
+~/repttyl-workspaces
+```
+
+These can be overridden with:
+
+```text
+REPTTYL_STATE_ROOT
+REPTTYL_RUNTIME_ROOT
+REPTTYL_WORKSPACE_ROOT
+```
+
+## CLI Usage
+
+After building `apps/cli`, run:
+
+```bash
+node apps/cli/dist/main.js --agent-binary ./agent/bin/repttyl hello
+node apps/cli/dist/main.js --agent-binary ./agent/bin/repttyl workspace list
+node apps/cli/dist/main.js --agent-binary ./agent/bin/repttyl workspace create default
+node apps/cli/dist/main.js --agent-binary ./agent/bin/repttyl terminal attach <workspace-id>
+node apps/cli/dist/main.js --agent-binary ./agent/bin/repttyl session kill <workspace-id>
+```
+
+## Release
+
+Releases are created by pushing a semantic version tag:
+
+```bash
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
+
+See [docs/release.md](docs/release.md) for the full release flow.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
