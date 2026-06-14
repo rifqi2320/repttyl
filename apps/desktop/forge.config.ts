@@ -33,7 +33,10 @@ if (macNotarizationEnabled) {
 const config = {
   packagerConfig,
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      name: "repttyl_desktop",
+      setupExe: "RepttylSetup.exe",
+    }),
     new MakerZIP({}, ["darwin"]),
     new MakerDMG({ format: "ULFO" }, ["darwin"]),
     new MakerDeb({}),
