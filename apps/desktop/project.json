@@ -1,0 +1,27 @@
+{
+  "name": "desktop",
+  "root": "apps/desktop",
+  "sourceRoot": "apps/desktop/src",
+  "projectType": "application",
+  "targets": {
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @repttyl/desktop start"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @repttyl/desktop package"
+      }
+    },
+    "make": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @repttyl/desktop make"
+      }
+    }
+  }
+}
+

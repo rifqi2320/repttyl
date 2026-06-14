@@ -1,0 +1,44 @@
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+
+# Node / PNPM / Nx
+node_modules/
+.pnpm-store/
+.nx/
+dist/
+**/dist/
+dist-release/
+coverage/
+**/coverage/
+*.tsbuildinfo
+
+# Electron Forge / package output
+out/
+**/out/
+.webpack/
+**/.webpack/
+
+# Go build/test output
+agent/bin/
+agent/repttyl
+agent/coverage.out
+*.test
+repttyl-*.tar.gz
+repttyl-*.tar.gz.sha256
+repttyl-client-*.tar.gz
+repttyl-client-*.tar.gz.sha256
+
+# Repttyl local runtime/state if env vars point into the repo
+.repttyl/
+repttyl-workspaces/

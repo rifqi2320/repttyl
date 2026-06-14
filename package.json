@@ -1,0 +1,23 @@
+{
+  "name": "repttyl",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.16.1",
+  "scripts": {
+    "build": "nx run-many -t build",
+    "lint": "nx run-many -t lint",
+    "test": "nx run-many -t test",
+    "typecheck": "tsc -p apps/desktop/tsconfig.json --noEmit",
+    "release:preflight": "pnpm typecheck && pnpm --filter @repttyl/cli build && cd agent && go test -count=1 ./... && go build -o bin/repttyl ./cmd/repttyl",
+    "agent:build": "nx build agent",
+    "agent:test": "nx test agent",
+    "cli:build": "nx build cli",
+    "desktop:start": "nx start desktop"
+  },
+  "devDependencies": {
+    "@nx/js": "^22.0.0",
+    "@types/node": "^24.0.0",
+    "nx": "^22.0.0",
+    "typescript": "^5.9.0"
+  }
+}

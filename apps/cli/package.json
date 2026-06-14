@@ -1,0 +1,20 @@
+{
+  "name": "@repttyl/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "repttyl-client": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "pnpm --filter @repttyl/protocol-client build && tsc -p tsconfig.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@repttyl/protocol-client": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

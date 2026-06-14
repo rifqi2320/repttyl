@@ -1,0 +1,7 @@
+{
+  "name": "protocol-schema",
+  "root": "packages/protocol-schema",
+  "projectType": "library",
+  "targets": {}
+}
+

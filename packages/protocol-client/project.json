@@ -1,0 +1,14 @@
+{
+  "name": "protocol-client",
+  "root": "packages/protocol-client",
+  "sourceRoot": "packages/protocol-client/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @repttyl/protocol-client build"
+      }
+    }
+  }
+}

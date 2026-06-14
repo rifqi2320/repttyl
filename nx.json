@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*"],
+    "production": ["default", "!{projectRoot}/**/*.test.ts", "!{projectRoot}/**/*_test.go"]
+  },
+  "targetDefaults": {
+    "build": {
+      "inputs": ["production"],
+      "cache": true
+    },
+    "test": {
+      "inputs": ["default"],
+      "cache": true
+    },
+    "lint": {
+      "inputs": ["default"],
+      "cache": true
+    }
+  }
+}
+

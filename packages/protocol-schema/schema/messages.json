@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repttyl.local/schema/messages.json",
+  "title": "Repttyl JSON Lines Protocol",
+  "type": "object",
+  "required": ["op"],
+  "properties": {
+    "id": {
+      "type": ["string", "number"]
+    },
+    "op": {
+      "type": "string"
+    },
+    "stream": {
+      "type": "string"
+    },
+    "workspace_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "session": {
+      "type": "string"
+    },
+    "cols": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "rows": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "data": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    }
+  }
+}
