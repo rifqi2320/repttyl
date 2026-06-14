@@ -34,6 +34,8 @@ const config = {
   packagerConfig,
   makers: [
     new MakerSquirrel({
+      authors: "rifqi2320",
+      description: "Desktop app for Repttyl remote terminal workspaces",
       name: "repttyl_desktop",
       setupExe: "RepttylSetup.exe",
     }),
