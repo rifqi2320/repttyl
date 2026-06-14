@@ -117,6 +117,9 @@ jobs:
       - agent
       - cli
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -129,6 +132,7 @@ jobs:
           set -euo pipefail
           find artifacts -type f -print
           gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
             $(find artifacts -type f -print)
