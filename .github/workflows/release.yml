@@ -162,6 +162,50 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      - name: Validate macOS signing secrets
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in MACOS_CERTIFICATE_BASE64 MACOS_CERTIFICATE_PASSWORD APPLE_ID APPLE_ID_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required macOS signing secret: ${name}"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - name: Import macOS signing certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          certificate_path="${RUNNER_TEMP}/repttyl-signing.p12"
+          keychain_path="${RUNNER_TEMP}/repttyl-signing.keychain-db"
+
+          printf '%s' "${MACOS_CERTIFICATE_BASE64}" | base64 --decode > "${certificate_path}" 2>/dev/null || \
+            printf '%s' "${MACOS_CERTIFICATE_BASE64}" | base64 -D > "${certificate_path}"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${keychain_path}"
+          security import "${certificate_path}" -P "${MACOS_CERTIFICATE_PASSWORD}" -A -t cert -f pkcs12 -k "${keychain_path}"
+          security list-keychains -d user -s "${keychain_path}"
+          security default-keychain -s "${keychain_path}"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" "${keychain_path}"
+          security find-identity -v -p codesigning "${keychain_path}"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -183,6 +227,12 @@ jobs:
 
       - name: Make desktop DMG
         if: matrix.archive == 'dmg'
+        env:
+          MACOS_SIGNING_ENABLED: "true"
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           node -e "require('node:fs').rmSync('apps/desktop/out',{recursive:true,force:true})"
           pnpm --dir apps/desktop exec electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}

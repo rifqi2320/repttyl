@@ -5,12 +5,33 @@ import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { WebpackPlugin } from "@electron-forge/plugin-webpack";
 
+const macSigningEnabled = process.env.MACOS_SIGNING_ENABLED === "true";
+const macNotarizationEnabled =
+  macSigningEnabled &&
+  Boolean(process.env.APPLE_ID && process.env.APPLE_ID_PASSWORD && process.env.APPLE_TEAM_ID);
+
+const packagerConfig: Record<string, unknown> = {
+  asar: true,
+  executableName: "repttyl-desktop",
+  name: "Repttyl",
+};
+
+if (macSigningEnabled) {
+  packagerConfig.osxSign = {
+    identity: process.env.MACOS_SIGNING_IDENTITY || undefined,
+  };
+}
+
+if (macNotarizationEnabled) {
+  packagerConfig.osxNotarize = {
+    appleId: process.env.APPLE_ID,
+    appleIdPassword: process.env.APPLE_ID_PASSWORD,
+    teamId: process.env.APPLE_TEAM_ID,
+  };
+}
+
 const config = {
-  packagerConfig: {
-    asar: true,
-    executableName: "repttyl-desktop",
-    name: "Repttyl",
-  },
+  packagerConfig,
   makers: [
     new MakerSquirrel({}),
     new MakerZIP({}, ["darwin"]),
