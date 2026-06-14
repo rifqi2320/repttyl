@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+echo "pre-push: running Repttyl typecheck linter"
+scripts/typecheck-lint.sh
+

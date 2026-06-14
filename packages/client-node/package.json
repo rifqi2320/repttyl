@@ -7,7 +7,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && pnpm --filter @repttyl/protocol-client build && tsc -p tsconfig.json"
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && pnpm --filter @repttyl/protocol-client build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @repttyl/protocol-client build && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@repttyl/protocol-client": "workspace:*"

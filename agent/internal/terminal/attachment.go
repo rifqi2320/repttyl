@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 )
@@ -38,10 +39,18 @@ func Attach(ctx context.Context, socketPath string, session string, cols int, ro
 		cmd:  cmd,
 		done: make(chan struct{}),
 	}
+	ready := make(chan struct{})
+	var readyOnce sync.Once
+	signalReady := func() {
+		readyOnce.Do(func() {
+			close(ready)
+		})
+	}
 
 	go func() {
 		defer close(attachment.done)
 		defer func() {
+			signalReady()
 			_ = file.Close()
 		}()
 
@@ -51,6 +60,7 @@ func Attach(ctx context.Context, socketPath string, session string, cols int, ro
 			if n > 0 {
 				chunk := make([]byte, n)
 				copy(chunk, buf[:n])
+				signalReady()
 				onOutput(chunk)
 			}
 			if err != nil {
@@ -59,6 +69,14 @@ func Attach(ctx context.Context, socketPath string, session string, cols int, ro
 			}
 		}
 	}()
+
+	select {
+	case <-ready:
+	case <-ctx.Done():
+		_ = attachment.Close()
+		return nil, ctx.Err()
+	case <-time.After(2 * time.Second):
+	}
 
 	return attachment, nil
 }

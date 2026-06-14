@@ -17,6 +17,13 @@
         "cwd": "agent"
       }
     },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "test -z \"$(gofmt -l ./cmd ./internal)\" && go test -count=1 ./...",
+        "cwd": "agent"
+      }
+    },
     "fmt": {
       "executor": "nx:run-commands",
       "options": {
@@ -26,4 +33,3 @@
     }
   }
 }
-

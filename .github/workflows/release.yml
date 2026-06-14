@@ -126,6 +126,8 @@ jobs:
   desktop:
     name: Desktop ${{ matrix.platform }}-${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
+    env:
+      MACOS_SIGNING_CONFIGURED: ${{ secrets.MACOS_CERTIFICATE_BASE64 != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_ID_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && 'true' || 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -162,28 +164,14 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Validate macOS signing secrets
-        if: runner.os == 'macOS'
+      - name: Warn when macOS signing is disabled
+        if: runner.os == 'macOS' && env.MACOS_SIGNING_CONFIGURED != 'true'
         shell: bash
-        env:
-          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          set -euo pipefail
-          missing=0
-          for name in MACOS_CERTIFICATE_BASE64 MACOS_CERTIFICATE_PASSWORD APPLE_ID APPLE_ID_PASSWORD APPLE_TEAM_ID; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing required macOS signing secret: ${name}"
-              missing=1
-            fi
-          done
-          exit "${missing}"
+          echo "::warning::macOS signing secrets are not configured. Publishing an unsigned DMG."
 
       - name: Import macOS signing certificate
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.MACOS_SIGNING_CONFIGURED == 'true'
         shell: bash
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
@@ -228,7 +216,7 @@ jobs:
       - name: Make desktop DMG
         if: matrix.archive == 'dmg'
         env:
-          MACOS_SIGNING_ENABLED: "true"
+          MACOS_SIGNING_ENABLED: ${{ env.MACOS_SIGNING_CONFIGURED }}
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}

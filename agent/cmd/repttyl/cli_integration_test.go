@@ -98,6 +98,7 @@ func TestCLIAgentProtocolEndToEnd(t *testing.T) {
 	requireOK(t, created, true)
 	workspace := requireObject(t, created, "workspace")
 	workspaceID := requireString(t, workspace, "id")
+	workspacePath := requireString(t, workspace, "path")
 	runtimePath := requireString(t, workspace, "runtime_path")
 	requireField(t, workspace, "name", "API Server")
 	requireField(t, workspace, "slug", "api-server")
@@ -132,8 +133,14 @@ func TestCLIAgentProtocolEndToEnd(t *testing.T) {
 	streamID := requireString(t, attached, "stream")
 
 	marker := "repttyl-cli-e2e-ok"
-	agent.send(t, fmt.Sprintf(`{"stream":%q,"op":"input","data":"printf '%s\n'\n"}`, streamID, marker))
+	agent.send(t, fmt.Sprintf(`{"stream":%q,"op":"input","data":%q}`, streamID, fmt.Sprintf("printf '%s\\n'\n", marker)))
 	agent.readUntilOutputContains(t, streamID, marker)
+
+	commandMarker := "REPTTYL_COMMAND_TEST_DONE"
+	command := "mkdir -p command-test-dir; i=1; : > command-test-dir/numbers.txt; while [ \"$i\" -le 10 ]; do printf '%s\\n' \"$i\" >> command-test-dir/numbers.txt; i=$((i + 1)); done; printf '%s\\n' REPTTYL_COMMAND_TEST_DONE\n"
+	agent.send(t, fmt.Sprintf(`{"stream":%q,"op":"input","data":%q}`, streamID, command))
+	agent.readUntilOutputContains(t, streamID, commandMarker)
+	requireFileContent(t, filepath.Join(workspacePath, "command-test-dir", "numbers.txt"), "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n")
 
 	agent.send(t, fmt.Sprintf(`{"stream":%q,"op":"resize","cols":120,"rows":40}`, streamID))
 
@@ -155,6 +162,87 @@ func TestCLIAgentProtocolEndToEnd(t *testing.T) {
 	status := requireString(t, workspaceView, "status")
 	if status != "stopped" {
 		t.Fatalf("workspace status = %q, want stopped", status)
+	}
+}
+
+func TestCLIAgentWorkspaceMetadataEndToEnd(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not available on PATH")
+	}
+
+	bin := buildCLI(t)
+	env := testEnv(t)
+	agent := startAgent(t, bin, env)
+	agentClosed := false
+	defer func() {
+		if !agentClosed {
+			agent.close(t)
+		}
+	}()
+
+	tests := []struct {
+		id   int
+		name string
+		slug string
+	}{
+		{id: 1, name: "api", slug: "api"},
+		{id: 2, name: "Infra Shell", slug: "infra-shell"},
+		{id: 3, name: "billing_worker!", slug: "billing_worker"},
+		{id: 4, name: "release/canary", slug: "release-canary"},
+	}
+
+	createdIDs := make([]string, 0, len(tests))
+	for _, tt := range tests {
+		agent.send(t, fmt.Sprintf(`{"id":%d,"op":"workspace.create","name":%q}`, tt.id, tt.name))
+		response := agent.readID(t, fmt.Sprint(tt.id))
+		requireOK(t, response, true)
+		workspace := requireObject(t, response, "workspace")
+		createdIDs = append(createdIDs, requireString(t, workspace, "id"))
+		requireField(t, workspace, "name", tt.name)
+		requireField(t, workspace, "slug", tt.slug)
+	}
+
+	agent.send(t, `{"id":20,"op":"workspace.create","name":"infra-shell"}`)
+	duplicate := agent.readID(t, "20")
+	requireErrorCode(t, duplicate, "WORKSPACE_EXISTS")
+
+	agent.send(t, `{"id":21,"op":"workspace.create","name":" !!! "}`)
+	invalid := agent.readID(t, "21")
+	requireErrorCode(t, invalid, "INVALID_WORKSPACE_NAME")
+
+	agent.send(t, `{"id":22,"op":"workspace.list"}`)
+	listBeforeRestart := agent.readID(t, "22")
+	requireOK(t, listBeforeRestart, true)
+	requireArrayLen(t, listBeforeRestart, "workspaces", len(tests))
+
+	for i, workspaceID := range createdIDs {
+		agent.send(t, fmt.Sprintf(`{"id":%d,"op":"session.kill","workspace_id":%q,"session":"main"}`, 30+i, workspaceID))
+		requireOK(t, agent.readID(t, fmt.Sprint(30+i)), true)
+	}
+	agent.close(t)
+	agentClosed = true
+
+	listFromFreshCLI := runCLI(t, bin, env, "workspace", "list", "--json")
+	var listed struct {
+		Workspaces []struct {
+			Name   string `json:"name"`
+			Slug   string `json:"slug"`
+			Status string `json:"status"`
+		} `json:"workspaces"`
+	}
+	if err := json.Unmarshal([]byte(listFromFreshCLI.stdout), &listed); err != nil {
+		t.Fatalf("workspace list output is not JSON: %v\n%s", err, listFromFreshCLI.stdout)
+	}
+	if len(listed.Workspaces) != len(tests) {
+		t.Fatalf("persisted workspace count = %d, want %d", len(listed.Workspaces), len(tests))
+	}
+	for i, tt := range tests {
+		if listed.Workspaces[i].Name != tt.name || listed.Workspaces[i].Slug != tt.slug {
+			t.Fatalf("persisted workspace[%d] = %#v, want name %q slug %q", i, listed.Workspaces[i], tt.name, tt.slug)
+		}
+		if listed.Workspaces[i].Status != "stopped" {
+			t.Fatalf("persisted workspace[%d] status = %q, want stopped", i, listed.Workspaces[i].Status)
+		}
 	}
 }
 
@@ -233,6 +321,7 @@ func testEnv(t *testing.T) []string {
 		"REPTTYL_RUNTIME_ROOT=" + filepath.Join(root, "run"),
 		"REPTTYL_WORKSPACE_ROOT=" + filepath.Join(root, "workspaces"),
 		"SHELL=/bin/sh",
+		"TERM=xterm-256color",
 	}
 }
 
@@ -281,6 +370,26 @@ func requireTmuxOption(t *testing.T, socketPath string, option string, want stri
 	if got != want {
 		t.Fatalf("tmux option %s = %q, want %q", option, got, want)
 	}
+}
+
+func requireFileContent(t *testing.T, path string, want string) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		content, err := os.ReadFile(path)
+		if err == nil && string(content) == want {
+			return
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("content = %q, want %q", string(content), want)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("file %s was not written as expected: %v", path, lastErr)
 }
 
 type runningAgent struct {
@@ -412,6 +521,7 @@ func (a *runningAgent) readUntilOutputContains(t *testing.T, streamID string, su
 	t.Helper()
 
 	deadline := time.After(8 * time.Second)
+	var seen strings.Builder
 	for {
 		select {
 		case line, ok := <-a.lines:
@@ -423,12 +533,14 @@ func (a *runningAgent) readUntilOutputContains(t *testing.T, streamID string, su
 				t.Fatalf("agent stream message is not JSON: %v\n%s", err, line)
 			}
 			if message["stream"] == streamID && message["op"] == "output" {
-				if strings.Contains(fmt.Sprint(message["data"]), substring) {
+				data := fmt.Sprint(message["data"])
+				seen.WriteString(data)
+				if strings.Contains(seen.String(), substring) {
 					return
 				}
 			}
 		case <-deadline:
-			t.Fatalf("timed out waiting for terminal output containing %q", substring)
+			t.Fatalf("timed out waiting for terminal output containing %q; saw %q", substring, seen.String())
 		}
 	}
 }

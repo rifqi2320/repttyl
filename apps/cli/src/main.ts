@@ -18,6 +18,7 @@ const CLIENT_VERSION = "0.1.1";
 type ParsedArgs = {
   agentBinary: string;
   host?: string;
+  dockerContainer?: string;
   local: boolean;
   json: boolean;
   command: string[];
@@ -25,6 +26,7 @@ type ParsedArgs = {
 
 async function main(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
+  validateTransportSelection(args);
 
   if (args.command[0] === "help" || args.command[0] === "--help") {
     printUsage();
@@ -45,8 +47,8 @@ async function main(argv: string[]): Promise<void> {
 }
 
 async function runInteractive(args: ParsedArgs): Promise<void> {
-  const host = args.local ? undefined : args.host ?? (await chooseHost());
-  if (!args.local && !host) {
+  const host = args.local || args.dockerContainer ? undefined : args.host ?? (await chooseHost());
+  if (!args.local && !args.dockerContainer && !host) {
     process.stdout.write("No host selected.\n");
     return;
   }
@@ -65,7 +67,7 @@ async function runInteractive(args: ParsedArgs): Promise<void> {
       return;
     }
 
-    process.stdout.write(`\nConnecting to ${workspace.name}/${session.name}${host ? ` on ${host}` : ""}...\n`);
+    process.stdout.write(`\nConnecting to ${workspace.name}/${session.name}${transportSuffix({ ...args, host })}...\n`);
     await attachTerminalPresentation(client, workspace.id, session.name, {
       input: process.stdin,
       output: process.stdout,
@@ -157,11 +159,34 @@ function resolveTransport(args: ParsedArgs): AgentTransport {
     return { mode: "local", agentBinary: args.agentBinary };
   }
 
+  if (args.dockerContainer) {
+    return { mode: "docker", container: args.dockerContainer };
+  }
+
   if (!args.host) {
-    throw new Error("remote commands require --host, or use --local for a local agent");
+    throw new Error("remote commands require --host or --docker, or use --local for a local agent");
   }
 
   return { mode: "ssh", host: args.host };
+}
+
+function validateTransportSelection(args: ParsedArgs): void {
+  const selected = [args.local, Boolean(args.host), Boolean(args.dockerContainer)].filter(Boolean).length;
+  if (selected > 1) {
+    throw new Error("choose only one transport: --local, --host, or --docker");
+  }
+}
+
+function transportSuffix(args: ParsedArgs): string {
+  if (args.local) {
+    return " locally";
+  }
+
+  if (args.dockerContainer) {
+    return ` in Docker container ${args.dockerContainer}`;
+  }
+
+  return args.host ? ` on ${args.host}` : "";
 }
 
 async function chooseHost(): Promise<string | undefined> {
@@ -250,6 +275,21 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
+    if (arg === "--docker") {
+      const value = argv[i + 1];
+      if (!value) {
+        throw new Error("--docker requires a container name or id");
+      }
+      parsed.dockerContainer = value;
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--docker=")) {
+      parsed.dockerContainer = arg.slice("--docker=".length);
+      continue;
+    }
+
     if (arg === "--local") {
       parsed.local = true;
       continue;
@@ -287,6 +327,11 @@ Remote SSH:
   repttyl-client --host <ssh-host> sessions <workspace-id>
   repttyl-client --host <ssh-host> attach <workspace-id> [session]
 
+Docker:
+  repttyl-client --docker <container> workspace list
+  repttyl-client --docker <container> sessions <workspace-id>
+  repttyl-client --docker <container> attach <workspace-id> [session]
+
 Local development:
   repttyl-client --local [--agent-binary PATH] workspace list
   repttyl-client --local [--agent-binary PATH] workspace create <name>
@@ -296,9 +341,10 @@ Other:
   --json
   --local
   --host <ssh-host>
+  --docker <container>
   --agent-binary <path>
 
-The CLI never invokes tmux directly. It connects to the remote agent over SSH and the agent owns tmux.
+The CLI never invokes tmux directly. It connects to the agent over local process, SSH, or Docker transport, and the agent owns tmux.
 `);
 }
 

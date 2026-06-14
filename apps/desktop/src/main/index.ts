@@ -36,7 +36,7 @@ if (started) {
 }
 
 const createWindow = () => {
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 980,
@@ -49,7 +49,14 @@ const createWindow = () => {
     title: "Repttyl",
   });
 
-  void mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+  mainWindow = window;
+  window.on("closed", () => {
+    if (mainWindow === window) {
+      mainWindow = undefined;
+    }
+  });
+
+  void window.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 };
 
 void app.whenReady().then(() => {
@@ -135,10 +142,10 @@ function resolveTransport(request: ConnectRequest): AgentTransport {
 
 function bindTerminalEvents(nextClient: AgentClient): void {
   outputUnsubscribe = nextClient.onTerminalOutput((message: TerminalOutput) => {
-    mainWindow?.webContents.send("repttyl:terminal:output", message);
+    sendToMainWindow("repttyl:terminal:output", message);
   });
   errorUnsubscribe = nextClient.onTerminalError((message: TerminalError) => {
-    mainWindow?.webContents.send("repttyl:terminal:error", message);
+    sendToMainWindow("repttyl:terminal:error", message);
   });
 }
 
@@ -161,5 +168,14 @@ function disconnect(error?: string): void {
 }
 
 function publishState(): void {
-  mainWindow?.webContents.send("repttyl:connection:state", state);
+  sendToMainWindow("repttyl:connection:state", state);
+}
+
+function sendToMainWindow(channel: string, ...args: unknown[]): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed() || window.webContents.isDestroyed()) {
+    return;
+  }
+
+  window.webContents.send(channel, ...args);
 }

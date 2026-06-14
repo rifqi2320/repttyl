@@ -9,7 +9,12 @@
       "options": {
         "command": "pnpm --filter @repttyl/client-node build"
       }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @repttyl/client-node typecheck"
+      }
     }
   }
 }
-

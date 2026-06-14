@@ -16,6 +16,12 @@
         "command": "pnpm --filter @repttyl/desktop package"
       }
     },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @repttyl/desktop typecheck"
+      }
+    },
     "make": {
       "executor": "nx:run-commands",
       "options": {
@@ -24,4 +30,3 @@
     }
   }
 }
-

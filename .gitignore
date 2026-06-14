@@ -42,3 +42,6 @@ repttyl-client-*.tar.gz.sha256
 # Repttyl local runtime/state if env vars point into the repo
 .repttyl/
 repttyl-workspaces/
+
+# Local planning notes
+mvp.md

@@ -6,8 +6,8 @@ The current release focuses on the remote agent and CLI. The desktop app is scaf
 
 ## What It Does
 
-- Uses OpenSSH for remote hosts and a local subprocess transport for same-machine development.
-- Runs `repttyl agent --stdio` either locally or under the remote SSH user.
+- Uses OpenSSH for remote hosts, Docker exec for containers, and a local subprocess transport for same-machine development.
+- Runs `repttyl agent --stdio` either locally or under the remote SSH user, bootstrapping the remote agent from GitHub when needed.
 - Keeps shell state alive through tmux after client disconnects.
 - Stores named workspaces under the remote user's home directory.
 - Provides a CLI client for listing, creating, attaching to, and killing workspace sessions.
@@ -19,7 +19,7 @@ The current release focuses on the remote agent and CLI. The desktop app is scaf
 agent/                     Go remote agent and repttyl CLI binary
 apps/cli/                  Node CLI client
 apps/desktop/              Electron desktop scaffold
-packages/client-node/      Node transport adapters for local and SSH agent connections
+packages/client-node/      Node transport adapters for local, SSH, and Docker agent connections
 packages/protocol-client/  Shared TypeScript protocol client
 packages/protocol-schema/  JSON schema and protocol notes
 docs/release.md            Release process
@@ -125,11 +125,30 @@ node apps/cli/dist/main.js --local --agent-binary ./agent/bin/repttyl attach <wo
 node apps/cli/dist/main.js --local --agent-binary ./agent/bin/repttyl kill <workspace-id>
 ```
 
-For a remote host with `repttyl` on `PATH`:
+For a remote host with SSH access:
 
 ```bash
 node apps/cli/dist/main.js --host my-ssh-host workspace list
 node apps/cli/dist/main.js --host my-ssh-host attach <workspace-id>
+```
+
+If `repttyl` is not found on the remote host, the SSH transport downloads the matching release agent into `~/.local/bin/repttyl` and runs it from there. The remote host needs `tmux` plus either `curl` or `wget`.
+
+## Opening Unsigned macOS DMGs
+
+Development macOS DMGs are unsigned unless Apple signing secrets are configured in the release workflow. If macOS reports that `Repttyl` is damaged, drag `Repttyl.app` to `/Applications`, then run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Repttyl.app
+open /Applications/Repttyl.app
+```
+
+For a running Docker container with `repttyl` and `tmux` installed:
+
+```bash
+node apps/cli/dist/main.js --docker my-container workspace list
+node apps/cli/dist/main.js --docker my-container workspace create default
+node apps/cli/dist/main.js --docker my-container attach <workspace-id>
 ```
 
 ## Release
