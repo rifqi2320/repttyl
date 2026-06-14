@@ -2,10 +2,10 @@
 
 import { AgentClient, AgentProtocolError, type Session, type Workspace } from "@repttyl/protocol-client";
 import {
-  createAgentProcessConnection,
-  createSSHAgentConnection,
+  createAgentConnection,
   listSSHHosts,
   resolveDefaultAgentBinary,
+  type AgentTransport,
   type SSHHost,
 } from "@repttyl/client-node";
 import { attachTerminalPresentation } from "./presentation/terminal.js";
@@ -149,15 +149,19 @@ async function runCommand(client: AgentClient, args: ParsedArgs): Promise<void> 
 }
 
 function createClient(args: ParsedArgs): AgentClient {
+  return new AgentClient(createAgentConnection(resolveTransport(args)));
+}
+
+function resolveTransport(args: ParsedArgs): AgentTransport {
   if (args.local) {
-    return new AgentClient(createAgentProcessConnection(args.agentBinary));
+    return { mode: "local", agentBinary: args.agentBinary };
   }
 
   if (!args.host) {
     throw new Error("remote commands require --host, or use --local for a local agent");
   }
 
-  return new AgentClient(createSSHAgentConnection(args.host));
+  return { mode: "ssh", host: args.host };
 }
 
 async function chooseHost(): Promise<string | undefined> {

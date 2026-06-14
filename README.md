@@ -1,13 +1,13 @@
 # Repttyl
 
-Repttyl is a desktop-first remote shell workspace system built around OpenSSH, a small remote agent, and persistent tmux-backed terminal sessions.
+Repttyl is a desktop-first shell workspace system built around a small agent, transport adapters, and persistent tmux-backed terminal sessions.
 
 The current release focuses on the remote agent and CLI. The desktop app is scaffolded in the repo but is not part of the first release artifacts yet.
 
 ## What It Does
 
-- Uses OpenSSH as the transport boundary.
-- Runs a remote `repttyl agent --stdio` process under the SSH user.
+- Uses OpenSSH for remote hosts and a local subprocess transport for same-machine development.
+- Runs `repttyl agent --stdio` either locally or under the remote SSH user.
 - Keeps shell state alive through tmux after client disconnects.
 - Stores named workspaces under the remote user's home directory.
 - Provides a CLI client for listing, creating, attaching to, and killing workspace sessions.
@@ -19,6 +19,7 @@ The current release focuses on the remote agent and CLI. The desktop app is scaf
 agent/                     Go remote agent and repttyl CLI binary
 apps/cli/                  Node CLI client
 apps/desktop/              Electron desktop scaffold
+packages/client-node/      Node transport adapters for local and SSH agent connections
 packages/protocol-client/  Shared TypeScript protocol client
 packages/protocol-schema/  JSON schema and protocol notes
 docs/release.md            Release process
@@ -117,11 +118,18 @@ REPTTYL_WORKSPACE_ROOT
 After building `apps/cli`, run:
 
 ```bash
-node apps/cli/dist/main.js --agent-binary ./agent/bin/repttyl hello
-node apps/cli/dist/main.js --agent-binary ./agent/bin/repttyl workspace list
-node apps/cli/dist/main.js --agent-binary ./agent/bin/repttyl workspace create default
-node apps/cli/dist/main.js --agent-binary ./agent/bin/repttyl terminal attach <workspace-id>
-node apps/cli/dist/main.js --agent-binary ./agent/bin/repttyl session kill <workspace-id>
+node apps/cli/dist/main.js --local --agent-binary ./agent/bin/repttyl hello
+node apps/cli/dist/main.js --local --agent-binary ./agent/bin/repttyl workspace list
+node apps/cli/dist/main.js --local --agent-binary ./agent/bin/repttyl workspace create default
+node apps/cli/dist/main.js --local --agent-binary ./agent/bin/repttyl attach <workspace-id>
+node apps/cli/dist/main.js --local --agent-binary ./agent/bin/repttyl kill <workspace-id>
+```
+
+For a remote host with `repttyl` on `PATH`:
+
+```bash
+node apps/cli/dist/main.js --host my-ssh-host workspace list
+node apps/cli/dist/main.js --host my-ssh-host attach <workspace-id>
 ```
 
 ## Release

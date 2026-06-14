@@ -20,6 +20,19 @@ export type SSHHost = {
   user?: string;
 };
 
+export type LocalAgentTransport = {
+  mode: "local";
+  agentBinary?: string;
+};
+
+export type SSHAgentTransport = {
+  mode: "ssh";
+  host: string;
+  remoteCommand?: string;
+};
+
+export type AgentTransport = LocalAgentTransport | SSHAgentTransport;
+
 export class AgentProcessConnection implements AgentConnection {
   private readonly decoder = new JsonLineDecoder();
   private readonly messageListeners = new Set<MessageListener>();
@@ -85,13 +98,25 @@ export class AgentProcessConnection implements AgentConnection {
   }
 }
 
-export function createAgentProcessConnection(agentBinary = resolveDefaultAgentBinary()): AgentProcessConnection {
+export function createAgentConnection(transport: AgentTransport): AgentProcessConnection {
+  if (transport.mode === "local") {
+    return createLocalAgentConnection(transport.agentBinary);
+  }
+
+  return createSSHAgentConnection(transport.host, transport.remoteCommand);
+}
+
+export function createLocalAgentConnection(agentBinary = resolveDefaultAgentBinary()): AgentProcessConnection {
   const child = spawn(agentBinary, ["agent", "--stdio"], {
     stdio: ["pipe", "pipe", "pipe"],
     env: process.env,
   });
 
   return new AgentProcessConnection(child);
+}
+
+export function createAgentProcessConnection(agentBinary = resolveDefaultAgentBinary()): AgentProcessConnection {
+  return createLocalAgentConnection(agentBinary);
 }
 
 export function createSSHAgentConnection(host: string, remoteCommand = "repttyl"): AgentProcessConnection {

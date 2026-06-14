@@ -2,10 +2,10 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import started from "electron-squirrel-startup";
 import { AgentClient, type Session, type TerminalError, type TerminalOutput, type Workspace } from "@repttyl/protocol-client";
 import {
-  createAgentProcessConnection,
-  createSSHAgentConnection,
+  createAgentConnection,
   listSSHHosts,
   resolveDefaultAgentBinary,
+  type AgentTransport,
   type SSHHost,
 } from "@repttyl/client-node";
 
@@ -77,10 +77,7 @@ function registerIPC(): void {
   ipcMain.handle("repttyl:connection:connect", async (_event, request: ConnectRequest): Promise<ConnectionState> => {
     disconnect();
 
-    const nextClient =
-      request.mode === "ssh"
-        ? new AgentClient(createSSHAgentConnection(request.host))
-        : new AgentClient(createAgentProcessConnection(request.agentBinary ?? resolveDefaultAgentBinary()));
+    const nextClient = new AgentClient(createAgentConnection(resolveTransport(request)));
 
     client = nextClient;
     bindTerminalEvents(nextClient);
@@ -126,6 +123,14 @@ function registerIPC(): void {
   ipcMain.handle("repttyl:terminal:resize", async (_event, request: { stream: string; cols: number; rows: number }): Promise<void> => {
     requireClient().resizeTerminal(request.stream, request.cols, request.rows);
   });
+}
+
+function resolveTransport(request: ConnectRequest): AgentTransport {
+  if (request.mode === "ssh") {
+    return { mode: "ssh", host: request.host };
+  }
+
+  return { mode: "local", agentBinary: request.agentBinary ?? resolveDefaultAgentBinary() };
 }
 
 function bindTerminalEvents(nextClient: AgentClient): void {
