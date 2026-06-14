@@ -16,7 +16,7 @@ permissions:
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-  NODE_VERSION: 24
+  NODE_VERSION: 22
 
 jobs:
   agent:
