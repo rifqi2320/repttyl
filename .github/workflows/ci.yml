@@ -49,6 +49,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared Node client
+        run: pnpm --filter @repttyl/client-node build
+
       - name: Typecheck desktop
         run: pnpm exec tsc -p apps/desktop/tsconfig.json --noEmit
 
