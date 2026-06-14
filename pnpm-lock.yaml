@@ -48,6 +48,9 @@ importers:
       '@xterm/xterm':
         specifier: ^5.5.0
         version: 5.5.0
+      debug:
+        specifier: ^2.6.9
+        version: 2.6.9
       electron-squirrel-startup:
         specifier: ^1.0.1
         version: 1.0.1

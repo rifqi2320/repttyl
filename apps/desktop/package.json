@@ -14,6 +14,7 @@
     "@repttyl/client-node": "workspace:*",
     "@repttyl/protocol-client": "workspace:*",
     "@xterm/xterm": "^5.5.0",
+    "debug": "^2.6.9",
     "electron-squirrel-startup": "^1.0.1"
   },
   "devDependencies": {
