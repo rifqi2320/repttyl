@@ -175,7 +175,13 @@ jobs:
           set -euo pipefail
           mkdir -p dist-release
           name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.tar.gz"
-          tar -C apps/desktop/out -czf "dist-release/${name}" "${{ matrix.package-dir }}"
+          package_dir=$(find . -type d -name "${{ matrix.package-dir }}" -print -quit)
+          if [ -z "${package_dir}" ]; then
+            echo "Could not find ${{ matrix.package-dir }}"
+            find . -maxdepth 5 -type d | sort
+            exit 1
+          fi
+          tar -C "$(dirname "${package_dir}")" -czf "dist-release/${name}" "$(basename "${package_dir}")"
           (cd dist-release && sha256sum "${name}" > "${name}.sha256")
 
       - name: Archive desktop on macOS
@@ -185,7 +191,13 @@ jobs:
           set -euo pipefail
           mkdir -p dist-release
           name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.zip"
-          ditto -c -k --sequesterRsrc --keepParent "apps/desktop/out/${{ matrix.package-dir }}" "dist-release/${name}"
+          package_dir=$(find . -type d -name "${{ matrix.package-dir }}" -print -quit)
+          if [ -z "${package_dir}" ]; then
+            echo "Could not find ${{ matrix.package-dir }}"
+            find . -maxdepth 5 -type d | sort
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "${package_dir}" "dist-release/${name}"
           (cd dist-release && shasum -a 256 "${name}" > "${name}.sha256")
 
       - name: Archive desktop on Windows
@@ -194,7 +206,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist-release | Out-Null
           $name = "repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${env:RELEASE_TAG}.zip"
-          Compress-Archive -Path "apps/desktop/out/${{ matrix.package-dir }}" -DestinationPath "dist-release/$name" -Force
+          $packageDir = Get-ChildItem -Path . -Directory -Recurse -Filter "${{ matrix.package-dir }}" | Select-Object -First 1
+          if ($null -eq $packageDir) {
+            Write-Error "Could not find ${{ matrix.package-dir }}"
+          }
+          Compress-Archive -Path $packageDir.FullName -DestinationPath "dist-release/$name" -Force
           $hash = (Get-FileHash "dist-release/$name" -Algorithm SHA256).Hash.ToLower()
           "$hash  $name" | Out-File -FilePath "dist-release/$name.sha256" -Encoding ascii
 
