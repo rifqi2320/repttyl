@@ -18,8 +18,8 @@ importers:
         specifier: ^22.0.0
         version: 22.7.5
       typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   apps/cli:
     dependencies:
@@ -34,8 +34,8 @@ importers:
         specifier: ^24.0.0
         version: 24.13.2
       typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   apps/desktop:
     dependencies:
@@ -72,10 +72,10 @@ importers:
         version: 4.0.0(webpack@5.107.2)
       ts-loader:
         specifier: ^9.5.0
-        version: 9.6.0(typescript@5.9.3)(webpack@5.107.2)
+        version: 9.6.0(typescript@6.0.3)(webpack@5.107.2)
       typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       webpack:
         specifier: ^5.107.2
         version: 5.107.2(postcss@8.5.15)(webpack-cli@7.0.3)
@@ -93,14 +93,14 @@ importers:
         specifier: ^24.0.0
         version: 24.13.2
       typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/protocol-client:
     devDependencies:
       typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/protocol-schema: {}
 
@@ -2579,8 +2579,8 @@ packages:
     resolution: {integrity: sha512-34R7HTnG0XIJcBSn5XhDd7nNFPRcXYRZrBB2O2jdKqYODldSzBAqzsWoZYYvduky73toYS/ESqxPvkDf/F0XMg==}
     engines: {node: '>=10'}
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -5644,14 +5644,14 @@ snapshots:
     dependencies:
       utf8-byte-length: 1.0.5
 
-  ts-loader@9.6.0(typescript@5.9.3)(webpack@5.107.2):
+  ts-loader@9.6.0(typescript@6.0.3)(webpack@5.107.2):
     dependencies:
       chalk: 4.1.2
       enhanced-resolve: 5.24.0
       micromatch: 4.0.8
       semver: 7.8.4
       source-map: 0.7.6
-      typescript: 5.9.3
+      typescript: 6.0.3
       webpack: 5.107.2(postcss@8.5.15)(webpack-cli@7.0.3)
 
   tsconfig-paths@4.2.0:
@@ -5665,7 +5665,7 @@ snapshots:
   type-fest@0.13.1:
     optional: true
 
-  typescript@5.9.3: {}
+  typescript@6.0.3: {}
 
   undici-types@6.21.0: {}
 
