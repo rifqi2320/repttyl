@@ -8,5 +8,5 @@
       "@repttyl/protocol-client": ["packages/protocol-client/dist/index.d.ts"]
     }
   },
-  "include": ["src/**/*.ts", "forge.config.ts"]
+  "include": ["src/**/*.ts"]
 }

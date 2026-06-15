@@ -6,34 +6,35 @@
   "author": "rifqi2320",
   "license": "MIT",
   "private": true,
-  "main": ".webpack/main",
+  "main": "dist/main/index.js",
   "scripts": {
-    "start": "electron-forge start",
-    "start:vnc": "DISPLAY=${DISPLAY:-:99} ELECTRON_DISABLE_SANDBOX=1 REPTTYL_VNC=1 electron-forge start",
-    "start:vnc:devtools": "DISPLAY=${DISPLAY:-:99} ELECTRON_DISABLE_SANDBOX=1 REPTTYL_VNC=1 REPTTYL_OPEN_DEVTOOLS=1 electron-forge start",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true}); require('node:fs').rmSync('out',{recursive:true,force:true})\"",
+    "build:main": "webpack --config webpack.main.config.js",
+    "build:renderer": "webpack --config webpack.renderer.config.js",
+    "build": "pnpm --filter @repttyl/client-node build && pnpm run clean && pnpm run build:main && pnpm run build:renderer",
+    "start": "pnpm run build && electron .",
+    "start:vnc": "pnpm run build && DISPLAY=${DISPLAY:-:99} ELECTRON_DISABLE_SANDBOX=1 REPTTYL_VNC=1 electron . --no-sandbox",
+    "start:vnc:devtools": "pnpm run build && DISPLAY=${DISPLAY:-:99} ELECTRON_DISABLE_SANDBOX=1 REPTTYL_VNC=1 REPTTYL_OPEN_DEVTOOLS=1 electron . --no-sandbox",
     "typecheck": "pnpm --filter @repttyl/client-node build && tsc -p tsconfig.json --noEmit",
-    "package": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\" && pnpm --filter @repttyl/client-node build && electron-forge package",
-    "make": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\" && pnpm --filter @repttyl/client-node build && electron-forge make"
+    "package": "pnpm run build && electron-builder --config electron-builder.config.js --dir",
+    "make": "pnpm run build && electron-builder --config electron-builder.config.js --publish never"
   },
   "dependencies": {
     "@repttyl/client-node": "workspace:*",
     "@repttyl/protocol-client": "workspace:*",
     "@xterm/xterm": "^5.5.0",
     "debug": "^2.6.9",
-    "electron-squirrel-startup": "^1.0.1"
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.10.0",
-    "@electron-forge/maker-deb": "^7.10.0",
-    "@electron-forge/maker-dmg": "^7.11.2",
-    "@electron-forge/maker-rpm": "^7.10.0",
-    "@electron-forge/maker-squirrel": "^7.10.0",
-    "@electron-forge/maker-zip": "^7.10.0",
-    "@electron-forge/plugin-webpack": "^7.10.0",
     "css-loader": "^7.1.0",
     "electron": "^39.0.0",
+    "electron-builder": "^26.15.3",
+    "html-webpack-plugin": "^5.6.7",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "webpack": "^5.107.2",
+    "webpack-cli": "^7.0.3"
   }
 }

@@ -134,24 +134,20 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux
+            builder-platform: linux
             arch: x64
-            package-dir: Repttyl-linux-x64
-            archive: tar.gz
           - os: macos-15-intel
             platform: darwin
+            builder-platform: mac
             arch: x64
-            package-dir: Repttyl-darwin-x64
-            archive: dmg
           - os: macos-latest
             platform: darwin
+            builder-platform: mac
             arch: arm64
-            package-dir: Repttyl-darwin-arm64
-            archive: dmg
           - os: windows-latest
             platform: win32
+            builder-platform: win
             arch: x64
-            package-dir: Repttyl-win32-x64
-            archive: squirrel
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -198,29 +194,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Rebuild Electron dependencies
-        run: pnpm rebuild electron electron-winstaller nx
+        run: pnpm rebuild electron nx
 
-      - name: Rebuild macOS DMG dependencies
-        if: runner.os == 'macOS'
-        run: pnpm rebuild fs-xattr macos-alias
+      - name: Build desktop bundles
+        run: pnpm --dir apps/desktop run build
 
-      - name: Build desktop dependencies
-        run: pnpm --filter @repttyl/client-node build
-
-      - name: Package desktop
-        if: matrix.archive == 'tar.gz'
-        run: |
-          node -e "require('node:fs').rmSync('apps/desktop/out',{recursive:true,force:true})"
-          pnpm --dir apps/desktop exec electron-forge package --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
-
-      - name: Make desktop Squirrel.Windows
-        if: matrix.archive == 'squirrel'
-        run: |
-          node -e "require('node:fs').rmSync('apps/desktop/out',{recursive:true,force:true})"
-          pnpm --dir apps/desktop exec electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
-
-      - name: Make desktop DMG
-        if: matrix.archive == 'dmg'
+      - name: Build desktop artifacts
         env:
           MACOS_SIGNING_ENABLED: ${{ env.MACOS_SIGNING_CONFIGURED }}
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
@@ -228,79 +207,40 @@ jobs:
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          node -e "require('node:fs').rmSync('apps/desktop/out',{recursive:true,force:true})"
-          pnpm --dir apps/desktop exec electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+          pnpm --dir apps/desktop exec electron-builder --config electron-builder.config.js --${{ matrix.builder-platform }} --${{ matrix.arch }} --publish never
 
-      - name: Archive desktop on Linux
-        if: matrix.archive == 'tar.gz'
+      - name: Archive desktop artifacts
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist-release
-          name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.tar.gz"
-          package_dir=""
-          for _ in $(seq 1 60); do
-            package_dir=$(find . -path './node_modules' -prune -o -type d \( -name "${{ matrix.package-dir }}" -o -name "*-${{ matrix.platform }}-${{ matrix.arch }}" \) -print -quit)
-            [ -n "${package_dir}" ] && break
-            sleep 2
+          find apps/desktop/out -maxdepth 1 -type f ! -name "builder-debug.yml" -print0 | while IFS= read -r -d '' file; do
+            cp "${file}" "dist-release/$(basename "${file}")"
           done
-          if [ -z "${package_dir}" ]; then
-            echo "Could not find ${{ matrix.package-dir }}"
-            find . -path './node_modules' -prune -o -type d \( -name '*Repttyl*' -o -name '*desktop*' -o -name '*out*' -o -name '*${{ matrix.platform }}*' \) -print | sort
+          if ! find dist-release -maxdepth 1 -type f | grep -q .; then
+            echo "No desktop artifacts found"
+            find apps/desktop/out -maxdepth 3 -print 2>/dev/null | sort || true
             exit 1
           fi
-          tar -C "$(dirname "${package_dir}")" -czf "dist-release/${name}" "$(basename "${package_dir}")"
-          (cd dist-release && sha256sum "${name}" > "${name}.sha256")
-
-      - name: Archive desktop on macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist-release
-          name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.dmg"
-          dmg_path=""
-          zip_path=""
-          for _ in $(seq 1 60); do
-            dmg_path=$(find apps/desktop/out -type f -name "*.dmg" -print -quit 2>/dev/null || true)
-            zip_path=$(find apps/desktop/out -type f -name "*.zip" -print -quit 2>/dev/null || true)
-            [ -n "${dmg_path}" ] && [ -n "${zip_path}" ] && break
-            sleep 2
+          for file in dist-release/*; do
+            [ -f "${file}" ] || continue
+            name="$(basename "${file}")"
+            (cd dist-release && shasum -a 256 "${name}" > "${name}.sha256")
           done
-          if [ -z "${dmg_path}" ]; then
-            echo "Could not find macOS DMG"
-            find apps/desktop/out -maxdepth 6 -print 2>/dev/null | sort || true
-            exit 1
-          fi
-          if [ -z "${zip_path}" ]; then
-            echo "Could not find macOS ZIP for auto-update"
-            find apps/desktop/out -maxdepth 6 -print 2>/dev/null | sort || true
-            exit 1
-          fi
-          zip_name="repttyl-desktop-${{ matrix.platform }}-${{ matrix.arch }}-${RELEASE_TAG}.zip"
-          cp "${dmg_path}" "dist-release/${name}"
-          cp "${zip_path}" "dist-release/${zip_name}"
-          (cd dist-release && shasum -a 256 "${name}" > "${name}.sha256")
-          (cd dist-release && shasum -a 256 "${zip_name}" > "${zip_name}.sha256")
 
       - name: Archive desktop on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist-release | Out-Null
-          $makeDir = $null
-          for ($i = 0; $i -lt 60 -and $null -eq $makeDir; $i++) {
-            $makeDir = Get-ChildItem -Path apps/desktop/out/make -Directory -Recurse -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -match "squirrel.windows" } |
-              Select-Object -First 1
-            if ($null -eq $makeDir) {
-              Start-Sleep -Seconds 2
-            }
+          $files = Get-ChildItem -Path apps/desktop/out -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne "builder-debug.yml" }
+          if ($files.Count -eq 0) {
+            Get-ChildItem -Path apps/desktop/out -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+            Write-Error "No desktop artifacts found"
           }
-          if ($null -eq $makeDir) {
-            Write-Error "Could not find Squirrel.Windows output"
-          }
-          Get-ChildItem -Path $makeDir.FullName -File -Recurse | ForEach-Object {
+          $files | ForEach-Object {
             Copy-Item -Path $_.FullName -Destination "dist-release/$($_.Name)" -Force
             $hash = (Get-FileHash "dist-release/$($_.Name)" -Algorithm SHA256).Hash.ToLower()
             "$hash  $($_.Name)" | Out-File -FilePath "dist-release/$($_.Name).sha256" -Encoding ascii

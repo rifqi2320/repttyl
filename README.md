@@ -147,7 +147,7 @@ open /Applications/Repttyl.app
 
 ## Desktop Auto-Update
 
-Packaged macOS and Windows builds use Electron autoUpdater with `update.electronjs.org`. The app checks the GitHub release feed, downloads supported updates automatically, and prompts for restart after the update is ready. Linux desktop builds do not use Electron autoUpdater; update those through the release artifacts or a package manager.
+Packaged macOS and Windows builds use `electron-updater` with GitHub Releases. The release workflow uploads installer artifacts plus update metadata such as `latest.yml`, `latest-mac.yml`, or prerelease channel files like `rc.yml`; the app downloads supported updates automatically and prompts for restart after the update is ready. Linux desktop tarball builds do not use desktop auto-update; update those through the release artifacts or a package manager.
 
 For a running Docker container with `repttyl` and `tmux` installed:
 

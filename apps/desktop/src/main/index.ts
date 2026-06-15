@@ -1,5 +1,5 @@
-import { app, autoUpdater, BrowserWindow, ipcMain, shell } from "electron";
-import started from "electron-squirrel-startup";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { autoUpdater } from "electron-updater";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { AgentClient, type Session, type TerminalError, type TerminalOutput, type Workspace } from "@repttyl/protocol-client";
@@ -10,9 +10,6 @@ import {
   type AgentTransport,
   type SSHHost,
 } from "@repttyl/client-node";
-
-declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
-declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 type ConnectRequest =
   | { mode: "ssh"; host: string }
@@ -74,6 +71,11 @@ type GitHubRelease = {
   published_at?: string | null;
 };
 
+type GitHubRepository = {
+  owner: string;
+  repo: string;
+};
+
 type ParsedVersion = {
   major: number;
   minor: number;
@@ -102,16 +104,12 @@ let errorUnsubscribe: (() => void) | undefined;
 let autoUpdateState: AutoUpdateState = {
   supported: false,
   status: "unsupported",
-  message: "Auto-update is only available in packaged macOS and Windows builds.",
+  message: "Auto-update is only available in packaged desktop builds.",
 };
 let autoUpdateEventsBound = false;
 
-if (started) {
-  app.quit();
-}
-
 if (process.platform === "win32") {
-  app.setAppUserModelId("com.squirrel.Repttyl.repttyl-desktop");
+  app.setAppUserModelId("com.rifqi2320.repttyl");
 }
 
 if (process.env.REPTTYL_DISABLE_GPU === "1") {
@@ -144,7 +142,7 @@ const createWindow = () => {
     minHeight: 620,
     backgroundColor: "#101317",
     webPreferences: {
-      preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      preload: path.join(__dirname, "../preload/index.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -195,7 +193,7 @@ const createWindow = () => {
     }
   });
 
-  void window.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+  void window.loadFile(path.join(__dirname, "../renderer/index.html"));
   if (process.env.REPTTYL_OPEN_DEVTOOLS === "1") {
     window.webContents.once("did-finish-load", () => {
       if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
@@ -373,11 +371,11 @@ function sendToMainWindow(channel: string, ...args: unknown[]): void {
 function configureAutoUpdater(settings: AppSettings): void {
   bindAutoUpdaterEvents();
 
-  if (process.platform !== "darwin" && process.platform !== "win32") {
+  if (process.platform === "linux") {
     setAutoUpdateState({
       supported: false,
       status: "unsupported",
-      message: "Electron autoUpdater is not available on Linux. Use your package manager or the GitHub release.",
+      message: "Desktop auto-update is not enabled for Linux tarball builds. Use your package manager or the GitHub release.",
     });
     return;
   }
@@ -391,8 +389,27 @@ function configureAutoUpdater(settings: AppSettings): void {
     return;
   }
 
-  const feedURL = `https://update.electronjs.org/${settings.updates.repository}/${process.platform}-${process.arch}/${app.getVersion()}`;
-  autoUpdater.setFeedURL({ url: feedURL });
+  const repository = parseGitHubRepository(settings.updates.repository);
+  if (!repository) {
+    setAutoUpdateState({
+      supported: false,
+      status: "unsupported",
+      message: `Invalid GitHub repository: ${settings.updates.repository}`,
+    });
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.allowPrerelease = settings.updates.includePrereleases;
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.channel = updateChannelForSettings(settings);
+  autoUpdater.setFeedURL({
+    provider: "github",
+    owner: repository.owner,
+    repo: repository.repo,
+  });
+
+  const feedURL = `github:${repository.owner}/${repository.repo}#${autoUpdater.channel}`;
   setAutoUpdateState({
     supported: true,
     status: "idle",
@@ -431,12 +448,12 @@ function bindAutoUpdaterEvents(): void {
       error: undefined,
     });
   });
-  autoUpdater.on("update-downloaded", (_event, _releaseNotes, releaseName) => {
+  autoUpdater.on("update-downloaded", (info) => {
     setAutoUpdateState({
       ...autoUpdateState,
       status: "downloaded",
       message: "Desktop update downloaded. Restart to install.",
-      releaseName,
+      releaseName: info.version,
       error: undefined,
     });
   });
@@ -458,7 +475,7 @@ function checkElectronAutoUpdate(): AutoUpdateState {
     return autoUpdateState;
   }
   try {
-    autoUpdater.checkForUpdates();
+    void autoUpdater.checkForUpdates();
   } catch (error) {
     setAutoUpdateState({
       ...autoUpdateState,
@@ -468,6 +485,24 @@ function checkElectronAutoUpdate(): AutoUpdateState {
     });
   }
   return autoUpdateState;
+}
+
+function parseGitHubRepository(value: string): GitHubRepository | undefined {
+  const match = value.trim().match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+  if (!match) {
+    return undefined;
+  }
+  return { owner: match[1], repo: match[2] };
+}
+
+function updateChannelForSettings(settings: AppSettings): string {
+  if (!settings.updates.includePrereleases) {
+    return "latest";
+  }
+
+  const current = parseVersion(app.getVersion());
+  const prereleaseChannel = current?.prerelease.find((part) => /^[A-Za-z][0-9A-Za-z-]*$/.test(part));
+  return prereleaseChannel || "rc";
 }
 
 function setAutoUpdateState(nextState: AutoUpdateState): void {
