@@ -83,16 +83,29 @@ type ParsedVersion = {
   prerelease: string[];
 };
 
+const defaultRepository = "rifqi2320/repttyl";
+const currentRemoteAgentVersion = "v0.1.2-rc.9";
+const previousDefaultRemoteAgentVersions = new Set([
+  "v0.1.2-rc.1",
+  "v0.1.2-rc.2",
+  "v0.1.2-rc.3",
+  "v0.1.2-rc.4",
+  "v0.1.2-rc.5",
+  "v0.1.2-rc.6",
+  "v0.1.2-rc.7",
+  "v0.1.2-rc.8",
+]);
+
 const defaultSettings: AppSettings = {
   updates: {
     checkOnStartup: true,
     includePrereleases: false,
-    repository: "rifqi2320/repttyl",
+    repository: defaultRepository,
   },
   remoteAgent: {
     autoInstall: true,
-    repository: "rifqi2320/repttyl",
-    version: "v0.1.2-rc.8",
+    repository: defaultRepository,
+    version: currentRemoteAgentVersion,
   },
 };
 
@@ -268,7 +281,7 @@ function registerIPC(): void {
     bindTerminalEvents(nextClient);
 
     try {
-      const hello = await nextClient.hello("0.1.2-rc.8");
+      const hello = await nextClient.hello("0.1.2-rc.9");
       state = {
         connected: true,
         mode: request.mode,
@@ -512,7 +525,8 @@ function setAutoUpdateState(nextState: AutoUpdateState): void {
 
 function readSettings(): AppSettings {
   try {
-    return mergeSettings(defaultSettings, JSON.parse(readFileSync(settingsPath(), "utf8")) as Partial<AppSettings>);
+    const settings = mergeSettings(defaultSettings, JSON.parse(readFileSync(settingsPath(), "utf8")) as Partial<AppSettings>);
+    return migrateSettings(settings);
   } catch {
     return defaultSettings;
   }
@@ -539,6 +553,24 @@ function mergeSettings(base: AppSettings, patch: Partial<AppSettings>): AppSetti
       ...patch.remoteAgent,
     },
   };
+}
+
+function migrateSettings(settings: AppSettings): AppSettings {
+  if (
+    settings.remoteAgent.autoInstall &&
+    settings.remoteAgent.repository === defaultRepository &&
+    previousDefaultRemoteAgentVersions.has(settings.remoteAgent.version)
+  ) {
+    return {
+      ...settings,
+      remoteAgent: {
+        ...settings.remoteAgent,
+        version: currentRemoteAgentVersion,
+      },
+    };
+  }
+
+  return settings;
 }
 
 async function checkForUpdates(settings: AppSettings): Promise<UpdateCheckResult> {
