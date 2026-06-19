@@ -3,7 +3,11 @@
   "version": "0.1.2-rc.8",
   "productName": "Repttyl",
   "description": "Desktop app for Repttyl remote terminal workspaces",
-  "author": "rifqi2320",
+  "author": {
+    "name": "rifqi2320",
+    "email": "rifqi2320@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/rifqi2320/repttyl",
   "license": "MIT",
   "private": true,
   "main": "dist/main/index.js",

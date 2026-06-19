@@ -52,5 +52,6 @@ module.exports = {
     category: "Development",
     executableName: "repttyl-desktop",
     artifactName: "repttyl-desktop-linux-${arch}-${version}.${ext}",
+    maintainer: "rifqi2320 <rifqi2320@users.noreply.github.com>",
   },
 };
