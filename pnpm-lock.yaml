@@ -59,7 +59,7 @@ importers:
         specifier: ^7.1.0
         version: 7.1.4(webpack@5.107.2)
       electron:
-        specifier: ^39.0.0
+        specifier: 39.8.10
         version: 39.8.10
       electron-builder:
         specifier: ^26.15.3
