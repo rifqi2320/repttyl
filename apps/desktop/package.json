@@ -1,6 +1,6 @@
 {
   "name": "@repttyl/desktop",
-  "version": "0.1.2-rc.7",
+  "version": "0.1.2-rc.8",
   "productName": "Repttyl",
   "description": "Desktop app for Repttyl remote terminal workspaces",
   "author": "rifqi2320",
@@ -16,6 +16,7 @@
     "start:vnc": "pnpm run build && DISPLAY=${DISPLAY:-:99} ELECTRON_DISABLE_SANDBOX=1 REPTTYL_VNC=1 electron . --no-sandbox",
     "start:vnc:devtools": "pnpm run build && DISPLAY=${DISPLAY:-:99} ELECTRON_DISABLE_SANDBOX=1 REPTTYL_VNC=1 REPTTYL_OPEN_DEVTOOLS=1 electron . --no-sandbox",
     "typecheck": "pnpm --filter @repttyl/client-node build && tsc -p tsconfig.json --noEmit",
+    "test:ssh-docker": "node test/ssh-docker-smoke.mjs",
     "package": "pnpm run build && electron-builder --config electron-builder.config.js --dir",
     "make": "pnpm run build && electron-builder --config electron-builder.config.js --publish never"
   },

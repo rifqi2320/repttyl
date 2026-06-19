@@ -272,7 +272,8 @@ func (s *Server) handleTerminalResize(request protocol.Request) {
 		return
 	}
 	if err := stream.attachment.Resize(request.Cols, request.Rows); err != nil {
-		s.removeStream(request.Stream)
+		// Resize is advisory. A terminal can still be usable if a size update races
+		// with attach/close, so do not tear down the stream for resize failures.
 		_ = s.sendStreamError(request.Stream, "RESIZE_FAILED", err.Error())
 	}
 }

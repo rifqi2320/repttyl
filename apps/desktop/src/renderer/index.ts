@@ -142,7 +142,7 @@ app.innerHTML = `
             <label class="setting-row">
               <span>
                 <strong>Include release candidates</strong>
-                <small>Consider prereleases such as <code>v0.1.2-rc.7</code>.</small>
+                <small>Consider prereleases such as <code>v0.1.2-rc.8</code>.</small>
               </span>
               <input id="settingIncludePrereleases" type="checkbox" />
             </label>
@@ -331,6 +331,7 @@ async function loadWorkspaces(): Promise<void> {
   await withBusy(async () => {
     state.workspaces = await window.repttyl.listWorkspaces();
     state.selectedWorkspace = state.workspaces[0];
+    state.stream = undefined;
     await loadSessions();
   });
 }
@@ -347,6 +348,7 @@ async function createWorkspace(): Promise<void> {
     const workspace = await window.repttyl.createWorkspace(name.trim());
     state.workspaces = await window.repttyl.listWorkspaces();
     state.selectedWorkspace = state.workspaces.find((item) => item.id === workspace.id) ?? workspace;
+    state.stream = undefined;
     await loadSessions();
   });
 }
@@ -389,6 +391,8 @@ function requestWorkspaceName(): Promise<string | undefined> {
 async function selectWorkspace(workspace: Workspace): Promise<void> {
   state.selectedWorkspace = workspace;
   state.selectedSession = undefined;
+  state.stream = undefined;
+  terminal.clear();
   await loadSessions();
 }
 
@@ -403,6 +407,9 @@ async function loadSessions(): Promise<void> {
   state.sessions = await window.repttyl.listSessions(state.selectedWorkspace.id);
   state.selectedSession = state.sessions[0];
   render();
+  if (state.selectedSession && !state.stream) {
+    void attachSession(state.selectedSession);
+  }
 }
 
 async function attachSession(session: Session): Promise<void> {
@@ -519,7 +526,11 @@ function renderSessions(): void {
   byID("terminalTitle").textContent = state.selectedWorkspace
     ? `${state.selectedWorkspace.name}${state.selectedSession ? ` / ${state.selectedSession.name}` : ""}`
     : "Terminal";
-  byID("terminalMeta").textContent = state.stream ? "Attached" : "No session attached";
+  byID("terminalMeta").textContent = state.stream
+    ? "Attached"
+    : state.selectedSession
+      ? "Attaching session..."
+      : "No session attached";
 }
 
 function renderSettings(): void {
@@ -685,7 +696,7 @@ function readSettingsForm(): Partial<AppSettings> {
     remoteAgent: {
       autoInstall: checkboxValue("settingRemoteAutoInstall"),
       repository: inputValue("settingRemoteRepository") || "rifqi2320/repttyl",
-      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.7",
+      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.8",
     },
   };
 }
@@ -713,7 +724,7 @@ function resizeTerminal(): void {
 }
 
 function isFatalTerminalError(code: string): boolean {
-  return code === "TERMINAL_CLOSED" || code === "STREAM_NOT_FOUND" || code === "WRITE_FAILED" || code === "RESIZE_FAILED";
+  return code === "TERMINAL_CLOSED" || code === "STREAM_NOT_FOUND" || code === "WRITE_FAILED";
 }
 
 function terminalSize(): { cols: number; rows: number } {
