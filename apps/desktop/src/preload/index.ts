@@ -26,6 +26,9 @@ type AppSettings = {
     repository: string;
     version: string;
   };
+  terminal: {
+    backend: "tmux" | "screen";
+  };
 };
 
 type UpdateCheckResult = {

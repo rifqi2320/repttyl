@@ -20,7 +20,7 @@ func TestCLICommandMode(t *testing.T) {
 	env := testEnv(t)
 
 	version := runCLI(t, bin, env, "version", "--json")
-	assertJSONField(t, version.stdout, "agent_version", "0.1.2-rc.9")
+	assertJSONField(t, version.stdout, "agent_version", "0.1.2-rc.10")
 	assertJSONField(t, version.stdout, "protocol_version", "0.1")
 
 	probe := runCLI(t, bin, env, "probe", "--json")
@@ -86,7 +86,7 @@ func TestCLIAgentProtocolEndToEnd(t *testing.T) {
 	agent.send(t, `{"id":1,"op":"hello","client_version":"cli-integration-test"}`)
 	hello := agent.readID(t, "1")
 	requireOK(t, hello, true)
-	requireField(t, hello, "agent_version", "0.1.2-rc.9")
+	requireField(t, hello, "agent_version", "0.1.2-rc.10")
 
 	agent.send(t, `{"id":2,"op":"workspace.list"}`)
 	initialList := agent.readID(t, "2")
@@ -104,6 +104,8 @@ func TestCLIAgentProtocolEndToEnd(t *testing.T) {
 	requireField(t, workspace, "slug", "api-server")
 	requireTmuxOption(t, filepath.Join(runtimePath, "tmux.sock"), "status", "off")
 	requireTmuxOption(t, filepath.Join(runtimePath, "tmux.sock"), "prefix", "None")
+	requireTmuxOption(t, filepath.Join(runtimePath, "tmux.sock"), "default-terminal", expectedTmuxDefaultTerminal())
+	requireTmuxOption(t, filepath.Join(runtimePath, "tmux.sock"), "terminal-overrides", "xterm-256color:Tc")
 
 	agent.send(t, `{"id":4,"op":"workspace.create","name":"api-server"}`)
 	duplicate := agent.readID(t, "4")
@@ -154,6 +156,75 @@ func TestCLIAgentProtocolEndToEnd(t *testing.T) {
 	workspaces := requireArray(t, finalList, "workspaces")
 	if len(workspaces) != 1 {
 		t.Fatalf("final workspace count = %d, want 1", len(workspaces))
+	}
+	workspaceView, ok := workspaces[0].(map[string]any)
+	if !ok {
+		t.Fatalf("workspace row = %#v, want object", workspaces[0])
+	}
+	status := requireString(t, workspaceView, "status")
+	if status != "stopped" {
+		t.Fatalf("workspace status = %q, want stopped", status)
+	}
+}
+
+func TestCLIAgentScreenBackendEndToEnd(t *testing.T) {
+	if _, err := exec.LookPath("screen"); err != nil {
+		t.Skip("screen is not available on PATH")
+	}
+
+	bin := buildCLI(t)
+	env := append(testEnv(t), "REPTTYL_SESSION_BACKEND=screen")
+	agent := startAgent(t, bin, env)
+	defer agent.close(t)
+
+	agent.send(t, `{"id":1,"op":"workspace.create","name":"screen-backend"}`)
+	created := agent.readID(t, "1")
+	requireOK(t, created, true)
+	workspace := requireObject(t, created, "workspace")
+	workspaceID := requireString(t, workspace, "id")
+	workspacePath := requireString(t, workspace, "path")
+
+	agent.send(t, fmt.Sprintf(`{"id":2,"op":"session.list","workspace_id":%q}`, workspaceID))
+	sessionList := agent.readID(t, "2")
+	requireOK(t, sessionList, true)
+	sessions := requireArray(t, sessionList, "sessions")
+	if len(sessions) != 1 {
+		t.Fatalf("session count = %d, want 1", len(sessions))
+	}
+	sessionView, ok := sessions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("session row = %#v, want object", sessions[0])
+	}
+	requireField(t, sessionView, "name", "main")
+	requireField(t, sessionView, "status", "running")
+
+	agent.send(t, fmt.Sprintf(`{"id":3,"op":"terminal.attach","workspace_id":%q,"cols":100,"rows":30}`, workspaceID))
+	attached := agent.readID(t, "3")
+	requireOK(t, attached, true)
+	streamID := requireString(t, attached, "stream")
+
+	marker := "repttyl-screen-e2e-ok"
+	agent.send(t, fmt.Sprintf(`{"stream":%q,"op":"input","data":%q}`, streamID, fmt.Sprintf("printf '%s\\n'\n", marker)))
+	agent.readUntilOutputContains(t, streamID, marker)
+
+	commandMarker := "REPTTYL_SCREEN_COMMAND_TEST_DONE"
+	command := "mkdir -p command-test-dir; printf '%s\\n' screen > command-test-dir/backend.txt; printf '%s\\n' REPTTYL_SCREEN_COMMAND_TEST_DONE\n"
+	agent.send(t, fmt.Sprintf(`{"stream":%q,"op":"input","data":%q}`, streamID, command))
+	agent.readUntilOutputContains(t, streamID, commandMarker)
+	requireFileContent(t, filepath.Join(workspacePath, "command-test-dir", "backend.txt"), "screen\n")
+
+	agent.send(t, fmt.Sprintf(`{"stream":%q,"op":"resize","cols":120,"rows":40}`, streamID))
+
+	agent.send(t, fmt.Sprintf(`{"id":4,"op":"session.kill","workspace_id":%q,"session":"main"}`, workspaceID))
+	killed := agent.readID(t, "4")
+	requireOK(t, killed, true)
+
+	agent.send(t, `{"id":5,"op":"workspace.list"}`)
+	finalList := agent.readID(t, "5")
+	requireOK(t, finalList, true)
+	workspaces := requireArray(t, finalList, "workspaces")
+	if len(workspaces) != 1 {
+		t.Fatalf("workspace count = %d, want 1", len(workspaces))
 	}
 	workspaceView, ok := workspaces[0].(map[string]any)
 	if !ok {
@@ -408,6 +479,15 @@ func requireTmuxOption(t *testing.T, socketPath string, option string, want stri
 	}
 }
 
+func expectedTmuxDefaultTerminal() string {
+	for _, term := range []string{"tmux-256color", "screen-256color", "xterm-256color"} {
+		if exec.Command("infocmp", term).Run() == nil {
+			return term
+		}
+	}
+	return "screen"
+}
+
 func requireFileContent(t *testing.T, path string, want string) {
 	t.Helper()
 
@@ -651,7 +731,7 @@ func requireField(t *testing.T, message map[string]any, key string, want any) {
 		t.Fatalf("missing field %q in %#v", key, message)
 	}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("%s = %#v, want %#v", key, got, want)
+		t.Fatalf("%s = %#v, want %#v in %#v", key, got, want, message)
 	}
 }
 

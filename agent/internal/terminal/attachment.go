@@ -24,6 +24,30 @@ type Attachment struct {
 var ErrClosed = errors.New("terminal attachment closed")
 
 func Attach(ctx context.Context, socketPath string, session string, cols int, rows int, onOutput func([]byte), onClose func(error)) (*Attachment, error) {
+	return AttachCommand(
+		ctx,
+		"tmux",
+		[]string{"-S", socketPath, "attach-session", "-t", session},
+		append(os.Environ(), "TERM="+attachTERM()),
+		"",
+		cols,
+		rows,
+		onOutput,
+		onClose,
+	)
+}
+
+func AttachCommand(
+	ctx context.Context,
+	command string,
+	args []string,
+	env []string,
+	dir string,
+	cols int,
+	rows int,
+	onOutput func([]byte),
+	onClose func(error),
+) (*Attachment, error) {
 	if cols <= 0 {
 		cols = 120
 	}
@@ -31,8 +55,13 @@ func Attach(ctx context.Context, socketPath string, session string, cols int, ro
 		rows = 40
 	}
 
-	cmd := exec.CommandContext(ctx, "tmux", "-S", socketPath, "attach-session", "-t", session)
-	cmd.Env = append(os.Environ(), "TERM="+attachTERM())
+	cmd := exec.CommandContext(ctx, command, args...)
+	if env != nil {
+		cmd.Env = env
+	}
+	if dir != "" {
+		cmd.Dir = dir
+	}
 	file, err := pty.StartWithSize(cmd, &pty.Winsize{
 		Rows: uint16(rows),
 		Cols: uint16(cols),

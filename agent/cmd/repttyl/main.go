@@ -12,6 +12,8 @@ import (
 	"github.com/repttyl/repttyl/agent/internal/daemon"
 	"github.com/repttyl/repttyl/agent/internal/diagnostics"
 	"github.com/repttyl/repttyl/agent/internal/metadata"
+	"github.com/repttyl/repttyl/agent/internal/screen"
+	"github.com/repttyl/repttyl/agent/internal/session"
 	"github.com/repttyl/repttyl/agent/internal/tmux"
 	"github.com/repttyl/repttyl/agent/internal/version"
 )
@@ -43,7 +45,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) err
 		if err != nil {
 			return err
 		}
-		server := agent.NewServer(stdin, stdout, store, tmux.New())
+		server := agent.NewServer(stdin, stdout, store, sessionManager())
 		return server.Serve(context.Background())
 	case "version":
 		if !isJSONOnly(args[1:]) {
@@ -83,7 +85,7 @@ func runWorkspace(args []string, stdout io.Writer, paths metadata.Paths) error {
 		return err
 	}
 
-	manager := tmux.New()
+	manager := sessionManager()
 	type workspaceView struct {
 		ID     string `json:"id"`
 		Name   string `json:"name"`
@@ -105,6 +107,15 @@ func runWorkspace(args []string, stdout io.Writer, paths metadata.Paths) error {
 	}
 
 	return writeJSON(stdout, map[string]any{"workspaces": views})
+}
+
+func sessionManager() session.Manager {
+	switch os.Getenv("REPTTYL_SESSION_BACKEND") {
+	case string(session.BackendScreen):
+		return screen.New()
+	default:
+		return tmux.New()
+	}
 }
 
 func runDaemon(args []string, stdout io.Writer, paths metadata.Paths) error {

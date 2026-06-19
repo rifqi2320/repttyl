@@ -14,8 +14,8 @@ import (
 	"github.com/repttyl/repttyl/agent/internal/daemon"
 	"github.com/repttyl/repttyl/agent/internal/metadata"
 	"github.com/repttyl/repttyl/agent/internal/protocol"
+	"github.com/repttyl/repttyl/agent/internal/session"
 	"github.com/repttyl/repttyl/agent/internal/terminal"
-	"github.com/repttyl/repttyl/agent/internal/tmux"
 	"github.com/repttyl/repttyl/agent/internal/version"
 )
 
@@ -23,7 +23,7 @@ type Server struct {
 	in      io.Reader
 	out     io.Writer
 	store   *metadata.Store
-	tmux    *tmux.Manager
+	manager session.Manager
 	writeMu sync.Mutex
 
 	streamMu sync.Mutex
@@ -48,12 +48,12 @@ type WorkspaceView struct {
 	Status string `json:"status"`
 }
 
-func NewServer(in io.Reader, out io.Writer, store *metadata.Store, tmuxManager *tmux.Manager) *Server {
+func NewServer(in io.Reader, out io.Writer, store *metadata.Store, manager session.Manager) *Server {
 	return &Server{
 		in:      in,
 		out:     out,
 		store:   store,
-		tmux:    tmuxManager,
+		manager: manager,
 		streams: make(map[string]activeStream),
 	}
 }
@@ -137,7 +137,7 @@ func (s *Server) handleWorkspaceList(ctx context.Context, request protocol.Reque
 			Name:   workspace.Name,
 			Slug:   workspace.Slug,
 			Path:   workspace.Path,
-			Status: s.tmux.Status(ctx, workspace),
+			Status: s.manager.Status(ctx, workspace),
 		})
 	}
 
@@ -159,8 +159,8 @@ func (s *Server) handleWorkspaceCreate(ctx context.Context, request protocol.Req
 		s.sendStoreError(request.ID, err)
 		return
 	}
-	if err := s.tmux.EnsureSession(ctx, workspace); err != nil {
-		_ = s.sendError(request.ID, "TMUX_ERROR", err.Error())
+	if err := s.manager.EnsureSession(ctx, workspace); err != nil {
+		_ = s.sendError(request.ID, s.manager.ErrorCode(), err.Error())
 		return
 	}
 
@@ -182,12 +182,12 @@ func (s *Server) handleTerminalAttach(ctx context.Context, request protocol.Requ
 		_ = s.sendError(request.ID, "WORKSPACE_NOT_FOUND", "Workspace not found")
 		return
 	}
-	if err := s.tmux.EnsureSession(ctx, workspace); err != nil {
-		_ = s.sendError(request.ID, "TMUX_ERROR", err.Error())
+	if err := s.manager.EnsureSession(ctx, workspace); err != nil {
+		_ = s.sendError(request.ID, s.manager.ErrorCode(), err.Error())
 		return
 	}
-	session := tmux.NormalizeSessionName(request.Session)
-	if session != tmux.SessionName {
+	sessionName := s.manager.NormalizeSessionName(request.Session)
+	if sessionName != session.Name {
 		_ = s.sendError(request.ID, "SESSION_NOT_FOUND", "Session not found")
 		return
 	}
@@ -199,10 +199,10 @@ func (s *Server) handleTerminalAttach(ctx context.Context, request protocol.Requ
 	}
 
 	closed := make(chan error, 1)
-	attachment, err := terminal.Attach(
+	attachment, err := s.manager.Attach(
 		ctx,
-		s.tmux.SocketPath(workspace),
-		session,
+		workspace,
+		sessionName,
 		request.Cols,
 		request.Rows,
 		func(output []byte) {
@@ -250,7 +250,7 @@ func (s *Server) handleSessionList(ctx context.Context, request protocol.Request
 		return
 	}
 
-	_ = s.sendSuccess(request.ID, map[string]any{"sessions": s.tmux.ListSessions(ctx, workspace)})
+	_ = s.sendSuccess(request.ID, map[string]any{"sessions": s.manager.ListSessions(ctx, workspace)})
 }
 
 func (s *Server) handleTerminalInput(request protocol.Request) {
@@ -331,8 +331,8 @@ func (s *Server) handleSessionKill(ctx context.Context, request protocol.Request
 	}
 
 	s.closeWorkspaceStreams(workspace.ID)
-	if err := s.tmux.KillSession(ctx, workspace, request.Session); err != nil {
-		_ = s.sendError(request.ID, "TMUX_ERROR", err.Error())
+	if err := s.manager.KillSession(ctx, workspace, request.Session); err != nil {
+		_ = s.sendError(request.ID, s.manager.ErrorCode(), err.Error())
 		return
 	}
 

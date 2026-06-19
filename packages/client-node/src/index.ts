@@ -14,8 +14,11 @@ import {
 type MessageListener = (message: InboundAgentMessage) => void;
 type CloseListener = (error?: Error) => void;
 
-const DEFAULT_AGENT_VERSION = "v0.1.2-rc.9";
+const DEFAULT_AGENT_VERSION = "v0.1.2-rc.10";
 const DEFAULT_RELEASE_REPOSITORY = "rifqi2320/repttyl";
+const DEFAULT_SESSION_BACKEND = "tmux";
+
+export type SessionBackend = "tmux" | "screen";
 
 export type SSHHost = {
   alias: string;
@@ -26,6 +29,7 @@ export type SSHHost = {
 export type LocalAgentTransport = {
   mode: "local";
   agentBinary?: string;
+  backend?: SessionBackend;
 };
 
 export type SSHAgentTransport = {
@@ -33,17 +37,20 @@ export type SSHAgentTransport = {
   host: string;
   remoteCommand?: string;
   remoteInstall?: RemoteAgentInstallOptions | false;
+  backend?: SessionBackend;
 };
 
 export type RemoteAgentInstallOptions = {
   repository?: string;
   version?: string;
+  backend?: SessionBackend;
 };
 
 export type DockerAgentTransport = {
   mode: "docker";
   container: string;
   remoteCommand?: string;
+  backend?: SessionBackend;
 };
 
 export type AgentTransport = LocalAgentTransport | SSHAgentTransport | DockerAgentTransport;
@@ -115,26 +122,26 @@ export class AgentProcessConnection implements AgentConnection {
 
 export function createAgentConnection(transport: AgentTransport): AgentProcessConnection {
   if (transport.mode === "local") {
-    return createLocalAgentConnection(transport.agentBinary);
+    return createLocalAgentConnection(transport.agentBinary, transport.backend);
   }
 
   if (transport.mode === "docker") {
-    return createDockerAgentConnection(transport.container, transport.remoteCommand);
+    return createDockerAgentConnection(transport.container, transport.remoteCommand, transport.backend);
   }
 
-  return createSSHAgentConnection(transport.host, transport.remoteCommand, transport.remoteInstall);
+  return createSSHAgentConnection(transport.host, transport.remoteCommand, transport.remoteInstall, transport.backend);
 }
 
-export function createLocalAgentConnection(agentBinary = resolveDefaultAgentBinary()): AgentProcessConnection {
+export function createLocalAgentConnection(agentBinary = resolveDefaultAgentBinary(), backend?: SessionBackend): AgentProcessConnection {
   const child =
     agentBinary === "repttyl"
-      ? spawn("sh", ["-c", createLocalBootstrapScript()], {
+      ? spawn("sh", ["-c", createLocalBootstrapScript({ backend })], {
           stdio: ["pipe", "pipe", "pipe"],
-          env: process.env,
+          env: agentEnv(backend),
         })
       : spawn(agentBinary, ["agent", "--stdio"], {
           stdio: ["pipe", "pipe", "pipe"],
-          env: process.env,
+          env: agentEnv(backend),
         });
 
   return new AgentProcessConnection(child);
@@ -148,12 +155,14 @@ export function createSSHAgentConnection(
   host: string,
   remoteCommand?: string,
   remoteInstall?: RemoteAgentInstallOptions | false,
+  backend?: SessionBackend,
 ): AgentProcessConnection {
+  const selectedBackend = backend || (remoteInstall && remoteInstall.backend) || undefined;
   const command = remoteCommand
-    ? `${remoteCommand} agent --stdio`
+    ? `${remoteBackendPrefix(selectedBackend)}${remoteCommand} agent --stdio`
     : remoteInstall === false
-      ? "repttyl agent --stdio"
-      : createRemoteBootstrapCommand(remoteInstall);
+      ? `${remoteBackendPrefix(selectedBackend)}repttyl agent --stdio`
+      : createRemoteBootstrapCommand({ ...remoteInstall, backend: selectedBackend });
   const child = spawn("ssh", ["-T", host, command], {
     stdio: ["pipe", "pipe", "pipe"],
     env: process.env,
@@ -162,11 +171,15 @@ export function createSSHAgentConnection(
   return new AgentProcessConnection(child);
 }
 
-export function createDockerAgentConnection(container: string, remoteCommand = "repttyl"): AgentProcessConnection {
-  const child = spawn("docker", ["exec", "-i", "-e", "TERM=xterm-256color", container, remoteCommand, "agent", "--stdio"], {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: process.env,
-  });
+export function createDockerAgentConnection(container: string, remoteCommand = "repttyl", backend?: SessionBackend): AgentProcessConnection {
+  const child = spawn(
+    "docker",
+    ["exec", "-i", "-e", "TERM=xterm-256color", "-e", `REPTTYL_SESSION_BACKEND=${sessionBackend(backend)}`, container, remoteCommand, "agent", "--stdio"],
+    {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: process.env,
+    },
+  );
 
   return new AgentProcessConnection(child);
 }
@@ -263,6 +276,7 @@ function createBootstrapScript(target: "local" | "remote", options: RemoteAgentI
   const repository = shellSingleQuote(
     options.repository || process.env["REPTTYL_RELEASE_REPOSITORY"] || DEFAULT_RELEASE_REPOSITORY,
   );
+  const backend = shellSingleQuote(sessionBackend(options.backend));
   const targetLabel = target === "remote" ? "remote agent" : "local agent";
   const script = `
 set -eu
@@ -271,6 +285,7 @@ install_dir="\${REPTTYL_AGENT_INSTALL_DIR:-$HOME/.local/bin}"
 agent="$install_dir/repttyl"
 tag=${version}
 agent_version="\${tag#v}"
+export REPTTYL_SESSION_BACKEND=${backend}
 
 agent_matches_version() {
   candidate="$1"
@@ -337,6 +352,22 @@ exec "$agent" agent --stdio
 `.trim();
 
   return script;
+}
+
+function sessionBackend(backend?: SessionBackend): SessionBackend {
+  const value = backend || process.env["REPTTYL_SESSION_BACKEND"] || DEFAULT_SESSION_BACKEND;
+  return value === "screen" ? "screen" : "tmux";
+}
+
+function agentEnv(backend?: SessionBackend): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    REPTTYL_SESSION_BACKEND: sessionBackend(backend),
+  };
+}
+
+function remoteBackendPrefix(backend?: SessionBackend): string {
+  return `REPTTYL_SESSION_BACKEND=${shellSingleQuote(sessionBackend(backend))} `;
 }
 
 function shellSingleQuote(value: string): string {

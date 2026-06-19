@@ -16,8 +16,11 @@ type ProbeResult struct {
 	GOARCH          string         `json:"goarch"`
 	Home            string         `json:"home"`
 	Paths           metadata.Paths `json:"paths"`
+	SessionBackend  string         `json:"session_backend"`
 	TmuxPath        string         `json:"tmux_path,omitempty"`
 	TmuxAvailable   bool           `json:"tmux_available"`
+	ScreenPath      string         `json:"screen_path,omitempty"`
+	ScreenAvailable bool           `json:"screen_available"`
 }
 
 type DoctorResult struct {
@@ -29,6 +32,7 @@ type DoctorResult struct {
 func Probe(paths metadata.Paths) ProbeResult {
 	home, _ := os.UserHomeDir()
 	tmuxPath, err := exec.LookPath("tmux")
+	screenPath, screenErr := exec.LookPath("screen")
 
 	return ProbeResult{
 		AgentVersion:    version.AgentVersion,
@@ -37,8 +41,11 @@ func Probe(paths metadata.Paths) ProbeResult {
 		GOARCH:          runtime.GOARCH,
 		Home:            home,
 		Paths:           paths,
+		SessionBackend:  sessionBackend(),
 		TmuxPath:        tmuxPath,
 		TmuxAvailable:   err == nil,
+		ScreenPath:      screenPath,
+		ScreenAvailable: screenErr == nil,
 	}
 }
 
@@ -50,7 +57,11 @@ func Doctor(paths metadata.Paths) DoctorResult {
 		Errors: []string{},
 	}
 
-	if !probe.TmuxAvailable {
+	if probe.SessionBackend == "screen" && !probe.ScreenAvailable {
+		result.OK = false
+		result.Errors = append(result.Errors, "screen is not available on PATH")
+	}
+	if probe.SessionBackend != "screen" && !probe.TmuxAvailable {
 		result.OK = false
 		result.Errors = append(result.Errors, "tmux is not available on PATH")
 	}
@@ -63,4 +74,11 @@ func Doctor(paths metadata.Paths) DoctorResult {
 	}
 
 	return result
+}
+
+func sessionBackend() string {
+	if os.Getenv("REPTTYL_SESSION_BACKEND") == "screen" {
+		return "screen"
+	}
+	return "tmux"
 }

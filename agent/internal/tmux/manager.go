@@ -10,9 +10,11 @@ import (
 	"strings"
 
 	"github.com/repttyl/repttyl/agent/internal/metadata"
+	"github.com/repttyl/repttyl/agent/internal/session"
+	"github.com/repttyl/repttyl/agent/internal/terminal"
 )
 
-const SessionName = "main"
+const SessionName = session.Name
 
 var lockedPrefixKeys = []string{
 	"s",
@@ -47,10 +49,7 @@ type Manager struct {
 	shell  string
 }
 
-type Session struct {
-	Name   string `json:"name"`
-	Status string `json:"status"`
-}
+type Session = session.Session
 
 func New() *Manager {
 	shell := os.Getenv("SHELL")
@@ -102,11 +101,22 @@ func (m *Manager) EnsureSession(ctx context.Context, workspace metadata.Workspac
 		return m.configureSession(ctx, workspace)
 	}
 
+	defaultTerminal := defaultTerminal()
 	cmd := exec.CommandContext(
 		ctx,
 		m.binary,
 		"-S",
 		m.SocketPath(workspace),
+		"set-option",
+		"-gq",
+		"default-terminal",
+		defaultTerminal,
+		";",
+		"set-option",
+		"-gq",
+		"terminal-overrides",
+		"xterm-256color:Tc",
+		";",
 		"new-session",
 		"-d",
 		"-s",
@@ -141,11 +151,31 @@ func (m *Manager) KillSession(ctx context.Context, workspace metadata.Workspace,
 	return cmd.Run()
 }
 
+func (m *Manager) Attach(
+	ctx context.Context,
+	workspace metadata.Workspace,
+	session string,
+	cols int,
+	rows int,
+	onOutput func([]byte),
+	onClose func(error),
+) (*terminal.Attachment, error) {
+	return terminal.Attach(ctx, m.SocketPath(workspace), m.NormalizeSessionName(session), cols, rows, onOutput, onClose)
+}
+
 func NormalizeSessionName(session string) string {
 	if session == "" {
 		return SessionName
 	}
 	return session
+}
+
+func (m *Manager) NormalizeSessionName(session string) string {
+	return NormalizeSessionName(session)
+}
+
+func (m *Manager) ErrorCode() string {
+	return "TMUX_ERROR"
 }
 
 func (m *Manager) hasSession(ctx context.Context, workspace metadata.Workspace) error {
@@ -170,6 +200,8 @@ func (m *Manager) configureSession(ctx context.Context, workspace metadata.Works
 
 func (m *Manager) lockControls(ctx context.Context, workspace metadata.Workspace) error {
 	commands := [][]string{
+		{"set-option", "-gq", "default-terminal", defaultTerminal()},
+		{"set-option", "-gq", "terminal-overrides", "xterm-256color:Tc"},
 		{"set-option", "-gq", "status", "off"},
 		{"set-option", "-gq", "prefix", "None"},
 		{"unbind-key", "-q", "C-b"},
@@ -227,4 +259,13 @@ func shellQuote(value string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func defaultTerminal() string {
+	for _, term := range []string{"tmux-256color", "screen-256color", "xterm-256color"} {
+		if exec.Command("infocmp", term).Run() == nil {
+			return term
+		}
+	}
+	return "screen"
 }

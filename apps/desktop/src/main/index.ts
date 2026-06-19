@@ -35,6 +35,9 @@ type AppSettings = {
     repository: string;
     version: string;
   };
+  terminal: {
+    backend: "tmux" | "screen";
+  };
 };
 
 type UpdateCheckResult = {
@@ -84,7 +87,7 @@ type ParsedVersion = {
 };
 
 const defaultRepository = "rifqi2320/repttyl";
-const currentRemoteAgentVersion = "v0.1.2-rc.9";
+const currentRemoteAgentVersion = "v0.1.2-rc.10";
 const previousDefaultRemoteAgentVersions = new Set([
   "v0.1.2-rc.1",
   "v0.1.2-rc.2",
@@ -94,6 +97,7 @@ const previousDefaultRemoteAgentVersions = new Set([
   "v0.1.2-rc.6",
   "v0.1.2-rc.7",
   "v0.1.2-rc.8",
+  "v0.1.2-rc.9",
 ]);
 
 const defaultSettings: AppSettings = {
@@ -106,6 +110,9 @@ const defaultSettings: AppSettings = {
     autoInstall: true,
     repository: defaultRepository,
     version: currentRemoteAgentVersion,
+  },
+  terminal: {
+    backend: "tmux",
   },
 };
 
@@ -281,7 +288,7 @@ function registerIPC(): void {
     bindTerminalEvents(nextClient);
 
     try {
-      const hello = await nextClient.hello("0.1.2-rc.9");
+      const hello = await nextClient.hello("0.1.2-rc.10");
       state = {
         connected: true,
         mode: request.mode,
@@ -333,12 +340,14 @@ function resolveTransport(request: ConnectRequest): AgentTransport {
         ? {
             repository: settings.remoteAgent.repository,
             version: settings.remoteAgent.version,
+            backend: settings.terminal.backend,
           }
         : false,
+      backend: settings.terminal.backend,
     };
   }
 
-  return { mode: "local", agentBinary: request.agentBinary ?? resolveDefaultAgentBinary() };
+  return { mode: "local", agentBinary: request.agentBinary ?? resolveDefaultAgentBinary(), backend: readSettings().terminal.backend };
 }
 
 function bindTerminalEvents(nextClient: AgentClient): void {
@@ -551,6 +560,10 @@ function mergeSettings(base: AppSettings, patch: Partial<AppSettings>): AppSetti
     remoteAgent: {
       ...base.remoteAgent,
       ...patch.remoteAgent,
+    },
+    terminal: {
+      ...base.terminal,
+      ...patch.terminal,
     },
   };
 }

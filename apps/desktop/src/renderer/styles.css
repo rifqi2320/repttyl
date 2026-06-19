@@ -10,6 +10,13 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+}
+
 body {
   margin: 0;
   overflow: hidden;
@@ -85,6 +92,7 @@ code {
 
 .shell {
   height: 100vh;
+  height: 100dvh;
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   background: #101317;
@@ -308,6 +316,7 @@ label,
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   background: #0b0d10;
+  overflow: hidden;
 }
 
 .terminal-head {
@@ -321,12 +330,13 @@ label,
 #terminal {
   min-height: 0;
   padding: 10px;
+  overflow: hidden;
 }
 
 .settings-view {
   min-height: 0;
   overflow: auto;
-  padding: 20px 22px;
+  padding: 20px 22px 96px;
 }
 
 .settings-view[hidden] {
@@ -408,8 +418,60 @@ label,
   text-transform: none;
 }
 
-.field-row input {
+.field-row input,
+.field-row .backend-control {
   width: 100%;
+}
+
+.backend-control {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  min-width: 0;
+  height: 32px;
+  padding: 3px;
+  border: 1px solid #343a42;
+  background: #0d1014;
+}
+
+.backend-option {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  text-transform: none;
+}
+
+.backend-option input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.backend-option span {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  color: #b7c0cc;
+  font-size: 13px;
+}
+
+.backend-option input:checked + span {
+  border-color: #8eb6ff;
+  background: #172235;
+  color: #e5e8ec;
+}
+
+.backend-option:hover span {
+  background: #20252c;
+  color: #e5e8ec;
 }
 
 .settings-actions {

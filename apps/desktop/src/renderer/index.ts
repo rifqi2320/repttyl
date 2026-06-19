@@ -142,7 +142,7 @@ app.innerHTML = `
             <label class="setting-row">
               <span>
                 <strong>Include release candidates</strong>
-                <small>Consider prereleases such as <code>v0.1.2-rc.9</code>.</small>
+                <small>Consider prereleases such as <code>v0.1.2-rc.10</code>.</small>
               </span>
               <input id="settingIncludePrereleases" type="checkbox" />
             </label>
@@ -176,6 +176,19 @@ app.innerHTML = `
               <span>Agent release tag</span>
               <input id="settingRemoteVersion" type="text" spellcheck="false" />
             </label>
+            <div class="field-row">
+              <span>Session backend</span>
+              <div id="settingTerminalBackend" class="backend-control" role="radiogroup" aria-label="Session backend">
+                <label class="backend-option">
+                  <input type="radio" name="settingTerminalBackend" value="tmux" />
+                  <span>tmux</span>
+                </label>
+                <label class="backend-option">
+                  <input type="radio" name="settingTerminalBackend" value="screen" />
+                  <span>screen</span>
+                </label>
+              </div>
+            </div>
           </section>
         </div>
       </section>
@@ -547,6 +560,7 @@ function renderSettings(): void {
     setCheckbox("settingRemoteAutoInstall", settings.remoteAgent.autoInstall);
     setInput("settingRemoteRepository", settings.remoteAgent.repository);
     setInput("settingRemoteVersion", settings.remoteAgent.version);
+    setRadio("settingTerminalBackend", settings.terminal.backend);
     renderedSettingsKey = nextSettingsKey;
   }
 
@@ -696,7 +710,10 @@ function readSettingsForm(): Partial<AppSettings> {
     remoteAgent: {
       autoInstall: checkboxValue("settingRemoteAutoInstall"),
       repository: inputValue("settingRemoteRepository") || "rifqi2320/repttyl",
-      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.9",
+      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.10",
+    },
+    terminal: {
+      backend: radioValue("settingTerminalBackend") === "screen" ? "screen" : "tmux",
     },
   };
 }
@@ -729,9 +746,28 @@ function isFatalTerminalError(code: string): boolean {
 
 function terminalSize(): { cols: number; rows: number } {
   const rect = terminalRoot.getBoundingClientRect();
+  const style = getComputedStyle(terminalRoot);
+  const width =
+    rect.width - parseFloat(style.paddingLeft || "0") - parseFloat(style.paddingRight || "0");
+  const height =
+    rect.height - parseFloat(style.paddingTop || "0") - parseFloat(style.paddingBottom || "0");
+  const cell = terminalCellSize();
+
   return {
-    cols: Math.max(20, Math.floor(rect.width / 8.2)),
-    rows: Math.max(8, Math.floor(rect.height / 16.2)),
+    cols: Math.max(20, Math.floor(width / cell.width)),
+    rows: Math.max(8, Math.floor(height / cell.height)),
+  };
+}
+
+function terminalCellSize(): { width: number; height: number } {
+  const row = terminalRoot.querySelector<HTMLElement>(".xterm-rows > div");
+  const textarea = terminalRoot.querySelector<HTMLElement>(".xterm-helper-textarea");
+  const rowHeight = row?.getBoundingClientRect().height ?? 0;
+  const cellWidth = textarea?.getBoundingClientRect().width ?? 0;
+
+  return {
+    width: cellWidth > 0 ? cellWidth : 8.2,
+    height: rowHeight > 0 ? rowHeight : 17.5,
   };
 }
 
@@ -753,6 +789,11 @@ function checkboxValue(id: string): boolean {
   return element instanceof HTMLInputElement ? element.checked : false;
 }
 
+function radioValue(name: string): string {
+  const element = document.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`);
+  return element?.value ?? "";
+}
+
 function setInput(id: string, value: string): void {
   const element = byID(id);
   if (element instanceof HTMLInputElement && element.value !== value) {
@@ -764,6 +805,12 @@ function setCheckbox(id: string, value: boolean): void {
   const element = byID(id);
   if (element instanceof HTMLInputElement) {
     element.checked = value;
+  }
+}
+
+function setRadio(name: string, value: string): void {
+  for (const element of document.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)) {
+    element.checked = element.value === value;
   }
 }
 
