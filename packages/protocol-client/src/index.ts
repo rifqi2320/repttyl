@@ -103,6 +103,7 @@ export type TerminalAttachResult = {
 
 export type TerminalOutputListener = (output: TerminalOutput) => void;
 export type TerminalErrorListener = (error: TerminalError) => void;
+export type AgentEventListener = (event: AgentEvent) => void;
 
 export class AgentProtocolError extends Error {
   readonly code: string;
@@ -145,6 +146,7 @@ export class AgentClient {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly outputListeners = new Set<TerminalOutputListener>();
   private readonly terminalErrorListeners = new Set<TerminalErrorListener>();
+  private readonly agentEventListeners = new Set<AgentEventListener>();
   private readonly unsubscribeMessage: () => void;
   private readonly unsubscribeClose: () => void;
 
@@ -207,6 +209,18 @@ export class AgentClient {
     return () => this.terminalErrorListeners.delete(listener);
   }
 
+  onAgentEvent(listener: AgentEventListener): () => void {
+    this.agentEventListeners.add(listener);
+    return () => this.agentEventListeners.delete(listener);
+  }
+
+  subscribeEvents(): Promise<void> {
+    return this.request<Record<string, never>>({
+      id: this.allocateID(),
+      op: "events.subscribe",
+    }).then(() => undefined);
+  }
+
   close(): void {
     this.unsubscribeMessage();
     this.unsubscribeClose();
@@ -244,6 +258,13 @@ export class AgentClient {
 
     if (isTerminalError(message)) {
       for (const listener of this.terminalErrorListeners) {
+        listener(message);
+      }
+      return;
+    }
+
+    if (isAgentEvent(message)) {
+      for (const listener of this.agentEventListeners) {
         listener(message);
       }
       return;
@@ -311,6 +332,19 @@ function isTerminalError(message: InboundAgentMessage): message is TerminalError
     record["op"] === "error" &&
     typeof record["stream"] === "string" &&
     typeof record["error"] === "object"
+  );
+}
+
+function isAgentEvent(message: InboundAgentMessage): message is AgentEvent {
+  if (!isRecord(message)) {
+    return false;
+  }
+  const record = message as Record<string, unknown>;
+
+  return (
+    record["op"] === "workspace.status" &&
+    typeof record["workspace_id"] === "string" &&
+    typeof record["status"] === "string"
   );
 }
 

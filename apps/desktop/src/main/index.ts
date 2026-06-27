@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { autoUpdater } from "electron-updater";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { AgentClient, type Session, type TerminalError, type TerminalOutput, type Workspace } from "@repttyl/protocol-client";
+import { AgentClient, type AgentEvent, type Session, type TerminalError, type TerminalOutput, type Workspace } from "@repttyl/protocol-client";
 import {
   createAgentConnection,
   listSSHHosts,
@@ -121,6 +121,7 @@ let client: AgentClient | undefined;
 let state: ConnectionState = { connected: false };
 let outputUnsubscribe: (() => void) | undefined;
 let errorUnsubscribe: (() => void) | undefined;
+let eventUnsubscribe: (() => void) | undefined;
 let autoUpdateState: AutoUpdateState = {
   supported: false,
   status: "unsupported",
@@ -297,6 +298,7 @@ function registerIPC(): void {
         protocolVersion: hello.protocol_version,
       };
       publishState();
+      void nextClient.subscribeEvents().catch(() => undefined);
       return state;
     } catch (error) {
       disconnect(error instanceof Error ? error.message : String(error));
@@ -315,6 +317,9 @@ function registerIPC(): void {
   });
   ipcMain.handle("repttyl:session:list", async (_event, workspaceID: string): Promise<Session[]> => {
     return requireClient().listSessions(workspaceID).then((r) => r.sessions);
+  });
+  ipcMain.handle("repttyl:session:kill", async (_event, request: { workspaceID: string; session: string }): Promise<void> => {
+    await requireClient().killSession(request.workspaceID, request.session);
   });
   ipcMain.handle(
     "repttyl:terminal:attach",
@@ -357,6 +362,9 @@ function bindTerminalEvents(nextClient: AgentClient): void {
   errorUnsubscribe = nextClient.onTerminalError((message: TerminalError) => {
     sendToMainWindow("repttyl:terminal:error", message);
   });
+  eventUnsubscribe = nextClient.onAgentEvent((event: AgentEvent) => {
+    sendToMainWindow("repttyl:agent:event", event);
+  });
 }
 
 function requireClient(): AgentClient {
@@ -369,8 +377,10 @@ function requireClient(): AgentClient {
 function disconnect(error?: string): void {
   outputUnsubscribe?.();
   errorUnsubscribe?.();
+  eventUnsubscribe?.();
   outputUnsubscribe = undefined;
   errorUnsubscribe = undefined;
+  eventUnsubscribe = undefined;
   client?.close();
   client = undefined;
   state = { connected: false, error };

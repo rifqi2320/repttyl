@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { Session, TerminalError, TerminalOutput, Workspace } from "@repttyl/protocol-client";
+import type { AgentEvent, Session, TerminalError, TerminalOutput, Workspace } from "@repttyl/protocol-client";
 import type { SSHHost } from "@repttyl/client-node";
 
 type ConnectRequest =
@@ -78,6 +78,8 @@ const api = {
   listWorkspaces: (): Promise<Workspace[]> => ipcRenderer.invoke("repttyl:workspace:list"),
   createWorkspace: (name: string): Promise<Workspace> => ipcRenderer.invoke("repttyl:workspace:create", name),
   listSessions: (workspaceID: string): Promise<Session[]> => ipcRenderer.invoke("repttyl:session:list", workspaceID),
+  killSession: (workspaceID: string, session: string): Promise<void> =>
+    ipcRenderer.invoke("repttyl:session:kill", { workspaceID, session }),
   attachTerminal: (request: TerminalAttachRequest): Promise<{ stream: string }> => ipcRenderer.invoke("repttyl:terminal:attach", request),
   sendTerminalInput: (stream: string, data: string): Promise<void> => ipcRenderer.invoke("repttyl:terminal:input", { stream, data }),
   resizeTerminal: (stream: string, cols: number, rows: number): Promise<void> =>
@@ -91,6 +93,11 @@ const api = {
     const wrapped = (_event: Electron.IpcRendererEvent, message: TerminalError) => listener(message);
     ipcRenderer.on("repttyl:terminal:error", wrapped);
     return () => ipcRenderer.off("repttyl:terminal:error", wrapped);
+  },
+  onAgentEvent: (listener: (event: AgentEvent) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, event: AgentEvent) => listener(event);
+    ipcRenderer.on("repttyl:agent:event", wrapped);
+    return () => ipcRenderer.off("repttyl:agent:event", wrapped);
   },
   onConnectionState: (listener: (state: ConnectionState) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, state: ConnectionState) => listener(state);
