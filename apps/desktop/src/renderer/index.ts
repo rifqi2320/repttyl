@@ -167,7 +167,7 @@ app.innerHTML = `
             <label class="setting-row">
               <span>
                 <strong>Include release candidates</strong>
-                <small>Consider prereleases such as <code>v0.1.2-rc.10</code>.</small>
+                <small>Consider prereleases such as <code>v0.1.2-rc.11</code>.</small>
               </span>
               <input id="settingIncludePrereleases" type="checkbox" />
             </label>
@@ -1011,7 +1011,7 @@ function readSettingsForm(): Partial<AppSettings> {
     remoteAgent: {
       autoInstall: checkboxValue("settingRemoteAutoInstall"),
       repository: inputValue("settingRemoteRepository") || "rifqi2320/repttyl",
-      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.10",
+      version: inputValue("settingRemoteVersion") || "v0.1.2-rc.11",
     },
     terminal: {
       backend: radioValue("settingTerminalBackend") === "screen" ? "screen" : "tmux",

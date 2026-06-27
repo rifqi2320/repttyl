@@ -1,6 +1,6 @@
 {
   "name": "@repttyl/client-node",
-  "version": "0.1.2-rc.10",
+  "version": "0.1.2-rc.11",
   "license": "MIT",
   "private": true,
   "type": "module",

@@ -87,7 +87,7 @@ type ParsedVersion = {
 };
 
 const defaultRepository = "rifqi2320/repttyl";
-const currentRemoteAgentVersion = "v0.1.2-rc.10";
+const currentRemoteAgentVersion = "v0.1.2-rc.11";
 const previousDefaultRemoteAgentVersions = new Set([
   "v0.1.2-rc.1",
   "v0.1.2-rc.2",
@@ -98,6 +98,7 @@ const previousDefaultRemoteAgentVersions = new Set([
   "v0.1.2-rc.7",
   "v0.1.2-rc.8",
   "v0.1.2-rc.9",
+  "v0.1.2-rc.10",
 ]);
 
 const defaultSettings: AppSettings = {
@@ -289,7 +290,7 @@ function registerIPC(): void {
     bindTerminalEvents(nextClient);
 
     try {
-      const hello = await nextClient.hello("0.1.2-rc.10");
+      const hello = await nextClient.hello("0.1.2-rc.11");
       state = {
         connected: true,
         mode: request.mode,
